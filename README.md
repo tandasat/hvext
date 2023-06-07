@@ -1,6 +1,6 @@
 # hvext
 
-The Windbg extension that implements multiple commands helpful to study Hyper-V on Intel processors.
+The Windbg extension that implements commands helpful to study Hyper-V on Intel processors.
 
 ## Usage
 
@@ -31,5 +31,5 @@ The Windbg extension that implements multiple commands helpful to study Hyper-V 
 
 ## References and acknowledgement
 - [@ergot86's implementation](https://github.com/ergot86/crap/blob/main/hyperv_stuff.js) as the base of this script.
-- [@0vercl0k's an amazing introduction](https://doar-e.github.io/blog/2017/12/01/debugger-data-model/) to Windbg Preview, including authoring extensions.
+- [@0vercl0k's amazing introduction](https://doar-e.github.io/blog/2017/12/01/debugger-data-model/) to Windbg Preview, including authoring extensions.
 - [@gerhart_x's IDA Python scripts](https://github.com/gerhart01/Hyper-V-scripts/blob/master/display-vmcs.py) for IDA Pro users (instead of Windbg).
