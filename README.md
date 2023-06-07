@@ -8,16 +8,25 @@ The Windbg extension that implements multiple commands helpful to study Hyper-V 
 
 2. Let the target boot until the Windows logon screen. This extension does not function at the stage of the first few break-ins, since processors are not in VMX root operation yet.
 
-3. Break-in the target Hyper-v.
+3. Break-in the target Hyper-V.
 
-4. Load the script.
+4. Load the script, for example:
     ```
-    hohoho
+    10: kd> .scriptrun C:\Users\user\Desktop\hvext\hvext.js
+    JavaScript script successfully loaded from 'C:\Users\user\Desktop\hvext\hvext.js'
+    hvext loaded. Execute !hvext_help [command] for help.
     ```
 
 5. Execute commands.
     ```
-    hohoho
+    10: kd> !hvext_help
+    hvext_help [command] - Displays this message.
+    dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.
+    dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.
+    indexes [gpa] - Displays index values walk EPT for the given GPA.
+    pte [gpa] - Displays contents of EPT entries used to translated the given GPA.
+
+    Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.
     ```
 
 ## References and acknowledgement
