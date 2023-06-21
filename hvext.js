@@ -123,11 +123,11 @@ function dumpEpt(verbosity = 0) {
         toString() {
             // If this is identify mapping, display so instead of actual PA.
             let translation = (current_region.identifyMapping) ?
-                "Identity".padEnd(11) :
-                hex(current_region.pa).padStart(11);
+                "Identity".padEnd(12) :
+                hex(current_region.pa).padStart(12);
 
-            return hex(current_region.gpa).padStart(11) + " - " +
-                hex(current_region.gpa + current_region.size).padStart(11) + " -> " +
+            return hex(current_region.gpa).padStart(12) + " - " +
+                hex(current_region.gpa + current_region.size).padStart(12) + " -> " +
                 translation + " " +
                 current_region.flags;
         }
@@ -206,8 +206,8 @@ function dumpEpt(verbosity = 0) {
         // Just dump all regions.
         println("GPA            PA          Flags");
         for (let region of regions) {
-            println(hex(region.gpa).padStart(11) + " -> " +
-                hex(region.pa).padStart(11) + " " +
+            println(hex(region.gpa).padStart(12) + " -> " +
+                hex(region.pa).padStart(12) + " " +
                 region.flags);
         }
     } else {
@@ -240,9 +240,9 @@ function dumpEpt(verbosity = 0) {
                     //  Yes, there is. Display that.
                     let unmapped_base = current_region.gpa + current_region.size;
                     let unmapped_size = region.gpa - unmapped_base;
-                    println(hex(unmapped_base).padStart(11) + " - " +
-                        hex(unmapped_base + unmapped_size).padStart(11) + " -> " +
-                        "Unmapped".padEnd(11) + " " +
+                    println(hex(unmapped_base).padStart(12) + " - " +
+                        hex(unmapped_base + unmapped_size).padStart(12) + " -> " +
+                        "Unmapped".padEnd(12) + " " +
                         new EptFlags(0));
                 }
 
@@ -264,19 +264,24 @@ function dumpEpt(verbosity = 0) {
         flags.execute = pml4e.flags.execute & pdpte.flags.execute;
         flags.executeForUserMode = pml4e.flags.executeForUserMode & pdpte.flags.executeForUserMode;
 
+        var leaf = pdpte;
         if (pde) {
+            leaf = pde;
             flags.read &= pde.flags.read;
             flags.write &= pde.flags.write;
             flags.execute &= pde.flags.execute;
             flags.executeForUserMode &= pde.flags.executeForUserMode;
         }
-
         if (pte) {
+            leaf = pte;
             flags.read &= pte.flags.read;
             flags.write &= pte.flags.write;
             flags.execute &= pte.flags.execute;
             flags.executeForUserMode &= pte.flags.executeForUserMode;
         }
+        flags.verifyGuestPaging = leaf.flags.verifyGuestPaging;
+        flags.pagingWriteAccess = leaf.flags.pagingWriteAccess;
+        flags.supervisorShadowStack = leaf.flags.supervisorShadowStack;
         return flags;
     }
 }
@@ -342,9 +347,9 @@ function pte(gpa) {
     let pdpt = pml4e.nextTable;
     let pdpte = pdpt.entries[i3];
     if (!pdpte.flags.present() || pdpte.flags.large) {
-        println("PML4e at " + hex(pml4.address.add(8 * i4)) + "  " +
+        println("PML4e at " + hex(pml4.address.add(8 * i4)) + "     " +
             "PDPTe at " + hex(pdpt.address.add(8 * i3)));
-        println("contains " + hex(pml4e.value) + "  " +
+        println("contains " + hex(pml4e.value) + "     " +
             "contains " + hex(pdpte.value));
         println("pfn " + pml4e + "    " +
             "pfn " + pdpte);
@@ -355,11 +360,11 @@ function pte(gpa) {
     let pd = pdpte.nextTable;
     let pde = pd.entries[i2];
     if (!pde.flags.present() || pde.flags.large) {
-        println("PML4e at " + hex(pml4.address.add(8 * i4)) + "  " +
-            "PDPTe at " + hex(pdpt.address.add(8 * i3)) + "  " +
+        println("PML4e at " + hex(pml4.address.add(8 * i4)) + "     " +
+            "PDPTe at " + hex(pdpt.address.add(8 * i3)) + "     " +
             "PDe at " + hex(pd.address.add(8 * i2)));
-        println("contains " + hex(pml4e.value) + "  " +
-            "contains " + hex(pdpte.value) + "  " +
+        println("contains " + hex(pml4e.value) + "     " +
+            "contains " + hex(pdpte.value) + "     " +
             "contains " + hex(pde.value));
         println("pfn " + pml4e + "    " +
             "pfn " + pdpte + "    " +
@@ -370,13 +375,13 @@ function pte(gpa) {
     // Pick PTe.
     let pt = pde.nextTable;
     let pte = pt.entries[i1];
-    println("PML4e at " + hex(pml4.address.add(8 * i4)) + "  " +
-        "PDPTe at " + hex(pdpt.address.add(8 * i3)) + "  " +
-        "PDe at " + hex(pd.address.add(8 * i2)) + "    " +
+    println("PML4e at " + hex(pml4.address.add(8 * i4)) + "     " +
+        "PDPTe at " + hex(pdpt.address.add(8 * i3)) + "     " +
+        "PDe at " + hex(pd.address.add(8 * i2)) + "       " +
         "PTe at " + hex(pt.address.add(8 * i1)));
-    println("contains " + hex(pml4e.value) + "  " +
-        "contains " + hex(pdpte.value) + "  " +
-        "contains " + hex(pde.value) + "  " +
+    println("contains " + hex(pml4e.value) + "     " +
+        "contains " + hex(pdpte.value) + "     " +
+        "contains " + hex(pde.value) + "     " +
         "contains " + hex(pte.value));
     println("pfn " + pml4e + "    " +
         "pfn " + pdpte + "    " +
@@ -507,6 +512,7 @@ class EptEntry {
 
 // Partial representation of flags bits in any EPT entries. Only bits we care are
 // represented.
+// See: Figure 29-1. Formats of EPTP and EPT Paging-Structure Entries
 class EptFlags {
     constructor(entry) {
         this.read = bits(entry, 0, 1).asNumber();
@@ -514,10 +520,16 @@ class EptFlags {
         this.execute = bits(entry, 2, 1).asNumber();
         this.large = bits(entry, 7, 1).asNumber();
         this.executeForUserMode = bits(entry, 10, 1).asNumber();
+        this.verifyGuestPaging = bits(entry, 57, 1).asNumber();
+        this.pagingWriteAccess = bits(entry, 58, 1).asNumber();
+        this.supervisorShadowStack = bits(entry, 60, 1).asNumber();
     }
 
     toString() {
         return (
+            { 1: "S", 0: "-" }[this.supervisorShadowStack] +
+            { 1: "P", 0: "-" }[this.pagingWriteAccess] +
+            { 1: "V", 0: "-" }[this.verifyGuestPaging] +
             { 1: "U", 0: "-" }[this.executeForUserMode] +
             { 1: "L", 0: "-" }[this.large] +
             { 1: "X", 0: "-" }[this.execute] +
@@ -533,7 +545,6 @@ class EptFlags {
         return (this.read || this.write || this.execute);
     }
 }
-
 
 // Takes specified range of bits from the 64bit value.
 function bits(value, offset, size) {
