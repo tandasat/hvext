@@ -6,6 +6,7 @@ function initializeScript() {
         new host.apiVersionSupport(1, 7),
         new host.functionAlias(hvextHelp, "hvext_help"),
         new host.functionAlias(dumpEpt, "dump_ept"),
+        new host.functionAlias(dumpMsr, "dump_msr"),
         new host.functionAlias(dumpVmcs, "dump_vmcs"),
         new host.functionAlias(indexesFor, "indexes"),
         new host.functionAlias(pte, "pte"),
@@ -84,6 +85,11 @@ function hvextHelp(command) {
             println("               1 = Shows both valid and invalid translations in a summarized format.");
             println("               2 = Shows every valid translations without summarizing it.");
             break;
+        case "dump_msr":
+            println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
+            println("   verbosity - 0 = Shows only MSRs that are not read or write protected (default).");
+            println("               1 = Shows protections of all MSRs managed by the MSR bitmaps.");
+            break;
         case "dump_vmcs":
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
             println("   Note: This command may corrupt system state and put it into an uncontainable situation.");
@@ -100,6 +106,7 @@ function hvextHelp(command) {
         default:
             println("hvext_help [command] - Displays this message.");
             println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
+            println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
             println("indexes [gpa] - Displays index values walk EPT for the given GPA.");
             println("pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
@@ -283,6 +290,67 @@ function dumpEpt(verbosity = 0) {
         flags.pagingWriteAccess = leaf.flags.pagingWriteAccess;
         flags.supervisorShadowStack = leaf.flags.supervisorShadowStack;
         return flags;
+    }
+}
+
+// Implements the !dump_msr command.
+function dumpMsr(verbosity = 0) {
+    class MsrEntry {
+        constructor(bit_position, read_protected, write_protected) {
+            if (bit_position < 0x2000) {
+                this.msr = bit_position;
+            } else {
+                this.msr = bit_position - 0x2000 + 0xc0000000;
+            }
+            this.read_protected = read_protected;
+            this.write_protected = write_protected;
+        }
+
+        toString() {
+            return (
+                { 1: "-", 0: "R" }[this.read_protected] +
+                { 1: "-", 0: "W" }[this.write_protected] +
+                " " +
+                hex(this.msr)
+            );
+        }
+    }
+
+    let bitmap = readVmcs(0x00002004);  // MSR bitmaps
+
+    // Convert the 4KB contents into an array of 64bit integers for processing.
+    let entries = [];
+    for (let line of exec("!dq " + hex(bitmap.bitwiseAnd(~0xfff)) + " l200")) {
+        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
+        entries.push(host.parseInt64(values[0], 16));
+        entries.push(host.parseInt64(values[1], 16));
+    }
+
+    // The MSR bitmaps are made up of two 2048 bytes segments. The first segment
+    // manages read access, and the 2nd manages write access, for the same ranges
+    // of MSRs. Let us walk the half of the `entries` and add offset 2048
+    // (= 0x100 * 8) to look both segments in a single loop.
+    let msrs = [];
+    for (let i = 0; i < 0x100; i += 1) {
+        let entry_low = entries[i];
+        let entry_hi = entries[i + 0x100];
+        // For the selected upper and lower 64bit entries, walk though each bit
+        // position and construct `MsrEntry` from the pair of the bits.
+        for (let bit_position = 0; bit_position < 64; bit_position += 1) {
+            let read_protected = bits(entry_low, bit_position, 1).asNumber();
+            let write_protected = bits(entry_hi, bit_position, 1).asNumber();
+            msrs.push(new MsrEntry(i * 64 + bit_position, read_protected, write_protected));
+        }
+    }
+
+    for (let msr of msrs) {
+        if (verbosity == 0) {
+            if (!msr.read_protected || !msr.write_protected) {
+                println(msr);
+            }
+        } else {
+            println(msr);
+        }
     }
 }
 
