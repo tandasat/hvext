@@ -150,11 +150,11 @@ function dumpEpt(verbosity = 0) {
     // Walk through all EPT entries and accumulate them as regions.
     let regions = [];
     for (var gpa = 0, page_size = 0; ; gpa += page_size) {
-        let indexes = indexesFor(gpa);
-        let i1 = indexes[0];
-        let i2 = indexes[1];
-        let i3 = indexes[2];
-        let i4 = indexes[3];
+        let indexFor = indexesFor(gpa);
+        let i1 = indexFor.Pt;
+        let i2 = indexFor.Pd;
+        let i3 = indexFor.Pdpt;
+        let i4 = indexFor.Pml4;
 
         // Exit once GPA exceeds its max value (48bit-width).
         if (gpa > 0xfffffffff000) {
@@ -381,12 +381,12 @@ function dumpVmcs() {
 
 // Implements the !indexes command.
 function indexesFor(gpa) {
-    return [
-        bits(gpa, 12, 9).asNumber(),
-        bits(gpa, 21, 9).asNumber(),
-        bits(gpa, 30, 9).asNumber(),
-        bits(gpa, 39, 9).asNumber(),
-    ];
+    return {
+        "Pt": bits(gpa, 12, 9).asNumber(),
+        "Pd": bits(gpa, 21, 9).asNumber(),
+        "Pdpt": bits(gpa, 30, 9).asNumber(),
+        "Pml4": bits(gpa, 39, 9).asNumber(),
+    };
 }
 
 // Implements the !pte command.
@@ -395,11 +395,11 @@ function pte(gpa) {
         gpa = 0;
     }
 
-    let indexes = indexesFor(gpa);
-    let i1 = indexes[0];
-    let i2 = indexes[1];
-    let i3 = indexes[2];
-    let i4 = indexes[3];
+    let indexFor = indexesFor(gpa);
+    let i1 = indexFor.Pt;
+    let i2 = indexFor.Pd;
+    let i3 = indexFor.Pdpt;
+    let i4 = indexFor.Pml4;
 
     // Pick and check PML4e.
     let pml4 = getCurrentEptPml4();
