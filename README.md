@@ -12,21 +12,23 @@ The Windbg extension that implements commands helpful to study Hyper-V on Intel 
 
 4. Load the script, for example:
     ```
-    10: kd> .scriptrun C:\Users\user\Desktop\hvext\hvext.js
+    kd> .scriptrun C:\Users\user\Desktop\hvext\hvext.js
     JavaScript script successfully loaded from 'C:\Users\user\Desktop\hvext\hvext.js'
     hvext loaded. Execute !hvext_help [command] for help.
     ```
 
 5. Execute commands.
     ```
-    10: kd> !hvext_help
+    kd> !hvext_help
     hvext_help [command] - Displays this message.
     dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.
+    dump_msr [verbosity] - Displays contents of the MSR bitmaps.
     dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.
     indexes [gpa] - Displays index values walk EPT for the given GPA.
     pte [gpa] - Displays contents of EPT entries used to translated the given GPA.
 
     Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.
+          Many of the commands may corrupt system state and put it into an uncontainable situation.
     ```
 
 ## References and acknowledgement

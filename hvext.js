@@ -92,7 +92,6 @@ function hvextHelp(command) {
             break;
         case "dump_vmcs":
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
-            println("   Note: This command may corrupt system state and put it into an uncontainable situation.");
             break;
         case "indexes":
             println("indexes [gpa] - Displays index values walk EPT for the given GPA.");
@@ -112,6 +111,7 @@ function hvextHelp(command) {
             println("pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
             println("");
             println("Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.");
+            println("      Many of the commands may corrupt system state and put it into an uncontainable situation.");
             break;
     }
 }
@@ -211,14 +211,14 @@ function dumpEpt(verbosity = 0) {
     // Display gathered regions.
     if (verbosity == 2) {
         // Just dump all regions.
-        println("GPA            PA          Flags");
+        println("GPA             PA           Flags");
         for (let region of regions) {
             println(hex(region.gpa).padStart(12) + " -> " +
                 hex(region.pa).padStart(12) + " " +
                 region.flags);
         }
     } else {
-        println("GPA                          PA          Flags");
+        println("GPA                            PA           Flags");
 
         // Combine regions that are effectively contiguous.
         var current_region = null;
