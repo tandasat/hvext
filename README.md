@@ -24,7 +24,7 @@ The Windbg extension that implements commands helpful to study Hyper-V on Intel 
     dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.
     dump_msr [verbosity] - Displays contents of the MSR bitmaps.
     dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.
-    indexes [gpa] - Displays index values walk EPT for the given GPA.
+    indexes [gpa] - Displays index to values walk EPT for the given GPA.
     pte [gpa] - Displays contents of EPT entries used to translated the given GPA.
 
     Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.

@@ -94,7 +94,7 @@ function hvextHelp(command) {
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
             break;
         case "indexes":
-            println("indexes [gpa] - Displays index values walk EPT for the given GPA.");
+            println("indexes [gpa] - Displays index values to walk EPT for the given GPA.");
             println("   gpa - A GPA to decode (default= 0).");
             break;
         case "pte":
@@ -107,7 +107,7 @@ function hvextHelp(command) {
             println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
-            println("indexes [gpa] - Displays index values walk EPT for the given GPA.");
+            println("indexes [gpa] - Displays index values to walk EPT for the given GPA.");
             println("pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
             println("");
             println("Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.");
