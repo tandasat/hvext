@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -8,6 +8,7 @@ function initializeScript() {
         new host.functionAlias(dumpEpt, "dump_ept"),
         new host.functionAlias(dumpMsr, "dump_msr"),
         new host.functionAlias(dumpVmcs, "dump_vmcs"),
+        new host.functionAlias(eptPte, "ept_pte"),
         new host.functionAlias(indexesFor, "indexes"),
         new host.functionAlias(pte, "pte"),
     ];
@@ -93,13 +94,17 @@ function hvextHelp(command) {
         case "dump_vmcs":
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
             break;
+        case "ept_pte":
+            println("ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA");
+            println("   gpa - A GPA to translate with EPT (default= 0).");
+            break;
         case "indexes":
             println("indexes [gpa] - Displays index values to walk EPT for the given GPA.");
             println("   gpa - A GPA to decode (default= 0).");
             break;
         case "pte":
-            println("pte [gpa] - Displays contents of EPT entries used to translated the given GPA");
-            println("   gpa - A GPA to translate with EPT (default= 0).");
+            println("pte [la] - Displays contents of paging structure entries used to translated the given LA.");
+            println("   la - A LA to translate with the paging structures (default= 0).");
             break;
         case undefined:
         default:
@@ -107,8 +112,9 @@ function hvextHelp(command) {
             println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
+            println("ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
             println("indexes [gpa] - Displays index values to walk EPT for the given GPA.");
-            println("pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
+            println("pte [la] - Displays contents of paging structure entries used to translated the given LA.");
             println("");
             println("Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.");
             println("      Many of the commands may corrupt system state and put it into an uncontainable situation.");
@@ -379,18 +385,8 @@ function dumpVmcs() {
         "efl=" + originalRflags);
 }
 
-// Implements the !indexes command.
-function indexesFor(gpa) {
-    return {
-        "Pt": bits(gpa, 12, 9).asNumber(),
-        "Pd": bits(gpa, 21, 9).asNumber(),
-        "Pdpt": bits(gpa, 30, 9).asNumber(),
-        "Pml4": bits(gpa, 39, 9).asNumber(),
-    };
-}
-
-// Implements the !pte command.
-function pte(gpa) {
+// Implements the !ept_pte command.
+function eptPte(gpa) {
     if (gpa == undefined) {
         gpa = 0;
     }
@@ -455,6 +451,89 @@ function pte(gpa) {
         "pfn " + pdpte + "    " +
         "pfn " + pde + "    " +
         "pfn " + pte);
+}
+
+// Implements the !indexes command.
+function indexesFor(gpa) {
+    return {
+        "Pt": bits(gpa, 12, 9).asNumber(),
+        "Pd": bits(gpa, 21, 9).asNumber(),
+        "Pdpt": bits(gpa, 30, 9).asNumber(),
+        "Pml4": bits(gpa, 39, 9).asNumber(),
+    };
+}
+
+// Implements the !pte command.
+function pte(la) {
+    if (la == undefined) {
+        la = 0;
+    }
+
+    let indexFor = indexesFor(la);
+    let i1 = indexFor.Pt;
+    let i2 = indexFor.Pd;
+    let i3 = indexFor.Pdpt;
+    let i4 = indexFor.Pml4;
+
+    // Pick and check PML4e.
+    let pml4Address = host.currentThread.Registers.Kernel.cr3.bitwiseAnd(~0xfff);
+    let pml4e = new PsEntry(readEntry(pml4Address + 8 * i4));
+    if (!pml4e.flags.present()) {
+        println("PML4e at " + hex(pml4Address.add(8 * i4)));
+        println("contains " + hex(pml4e.value));
+        println("pfn " + pml4e);
+        return;
+    }
+
+    // Pick and check PDPTe.
+    let pdptAddress = pml4e.pfn.bitwiseShiftLeft(12);
+    let pdpte = new PsEntry(readEntry(pdptAddress + 8 * i3));
+    if (!pdpte.flags.present() || pdpte.flags.large) {
+        println("PML4e at " + hex(pml4Addr.add(8 * i4)) + "     " +
+            "PDPTe at " + hex(pdptAddr.add(8 * i3)));
+        println("contains " + hex(pml4e.value) + "     " +
+            "contains " + hex(pdpte.value));
+        println("pfn " + pml4e + "   " +
+            "pfn " + pdpte);
+        return;
+    }
+
+    // Pick and check PDe.
+    let pdAddress = pdpte.pfn.bitwiseShiftLeft(12);
+    let pde = new PsEntry(readEntry(pdAddress + 8 * i2));
+    if (!pde.flags.present() || pde.flags.large) {
+        println("PML4e at " + hex(pml4Address.add(8 * i4)) + "     " +
+            "PDPTe at " + hex(pdptAddress.add(8 * i3)) + "     " +
+            "PDe at " + hex(pdAddress.add(8 * i2)));
+        println("contains " + hex(pml4e.value) + "     " +
+            "contains " + hex(pdpte.value) + "     " +
+            "contains " + hex(pde.value));
+        println("pfn " + pml4e + "   " +
+            "pfn " + pdpte + "   " +
+            "pfn " + pde);
+        return;
+    }
+
+    // Pick PTe.
+    let ptAddress = pde.pfn.bitwiseShiftLeft(12);
+    let pte = new PsEntry(readEntry(ptAddress + 8 * i1));
+    println("PML4e at " + hex(pml4Address.add(8 * i4)) + "     " +
+        "PDPTe at " + hex(pdptAddress.add(8 * i3)) + "     " +
+        "PDe at " + hex(pdAddress.add(8 * i2)) + "       " +
+        "PTe at " + hex(ptAddress.add(8 * i1)));
+    println("contains " + hex(pml4e.value) + "     " +
+        "contains " + hex(pdpte.value) + "     " +
+        "contains " + hex(pde.value) + "     " +
+        "contains " + hex(pte.value));
+    println("pfn " + pml4e + "   " +
+        "pfn " + pdpte + "   " +
+        "pfn " + pde + "   " +
+        "pfn " + pte);
+
+    function readEntry(address) {
+        let line = exec("!dq " + hex(address) + " l1").Last();
+        return host.parseInt64(line.replace(/`/g, "").substring(10).trim().split(" "), 16);
+    }
 }
 
 // Returns fully-parsed EPT entries pointed by the current EPTP VMCS encoding.
@@ -560,6 +639,54 @@ function readPageAsTable(address, nextTableType) {
         entries.push(new EptEntry(host.parseInt64(values[1], 16), nextTableType));
     }
     return entries;
+}
+
+// Represents a single paging structure entry for any level of the tables.
+class PsEntry {
+    constructor(entry) {
+        this.value = entry;
+        this.flags = new PsFlags(entry);
+        this.pfn = bits(entry, 12, 40).asNumber();
+    }
+
+    toString() {
+        return hex(this.pfn) + " " + this.flags;
+    }
+}
+
+// Partial representation of flags bits in any paging structure entries. Only
+// bits we care are represented.
+// See: Figure 4-11. Formats of CR3 and Paging-Structure Entries with 4-Level Paging and 5-Level Paging
+class PsFlags {
+    constructor(entry) {
+        this.valid = bits(entry, 0, 1).asNumber();
+        this.write = bits(entry, 1, 1).asNumber();
+        this.user = bits(entry, 2, 1).asNumber();
+        this.accessed = bits(entry, 5, 1).asNumber();
+        this.dirty = bits(entry, 6, 1).asNumber();
+        this.large = bits(entry, 7, 1).asNumber();
+        this.nonExecute = bits(entry, 63, 1).asNumber();
+    }
+
+    toString() {
+        if (!this.valid) {
+            return "---------";
+        }
+        return (
+            { 1: "L", 0: "-" }[this.large] +
+            { 1: "D", 0: "-" }[this.dirty] +
+            { 1: "A", 0: "-" }[this.accessed] +
+            "--" +
+            { 1: "U", 0: "K" }[this.user] +
+            { 1: "W", 0: "R" }[this.write] +
+            { 1: "-", 0: "E" }[this.nonExecute] +
+            { 1: "V", 0: "-" }[this.valid]
+        );
+    }
+
+    present() {
+        return this.valid;
+    }
 }
 
 // Represents a single EPT entry for any level of the tables.
