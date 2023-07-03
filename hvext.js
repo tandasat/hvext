@@ -99,7 +99,7 @@ function hvextHelp(command) {
             println("   gpa - A GPA to translate with EPT (default= 0).");
             break;
         case "indexes":
-            println("indexes [gpa] - Displays index values to walk EPT for the given GPA.");
+            println("indexes [address] - Displays index values to walk paging structures for the given address.");
             println("   gpa - A GPA to decode (default= 0).");
             break;
         case "pte":
@@ -113,7 +113,7 @@ function hvextHelp(command) {
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
             println("ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
-            println("indexes [gpa] - Displays index values to walk EPT for the given GPA.");
+            println("indexes [address] - Displays index values to walk paging structures for the given address.");
             println("pte [la] - Displays contents of paging structure entries used to translated the given LA.");
             println("");
             println("Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.");
