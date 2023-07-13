@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -292,6 +292,7 @@ function dumpEpt(verbosity = 0) {
             flags.execute &= pte.flags.execute;
             flags.executeForUserMode &= pte.flags.executeForUserMode;
         }
+        flags.memoryType = leaf.flags.memoryType;
         flags.verifyGuestPaging = leaf.flags.verifyGuestPaging;
         flags.pagingWriteAccess = leaf.flags.pagingWriteAccess;
         flags.supervisorShadowStack = leaf.flags.supervisorShadowStack;
@@ -415,7 +416,7 @@ function eptPte(gpa) {
             "PDPTe at " + hex(pdpt.address.add(8 * i3)));
         println("contains " + hex(pml4e.value) + "     " +
             "contains " + hex(pdpte.value));
-        println("pfn " + pml4e + "    " +
+        println("pfn " + pml4e + "   " +
             "pfn " + pdpte);
         return;
     }
@@ -430,8 +431,8 @@ function eptPte(gpa) {
         println("contains " + hex(pml4e.value) + "     " +
             "contains " + hex(pdpte.value) + "     " +
             "contains " + hex(pde.value));
-        println("pfn " + pml4e + "    " +
-            "pfn " + pdpte + "    " +
+        println("pfn " + pml4e + "   " +
+            "pfn " + pdpte + "   " +
             "pfn " + pde);
         return;
     }
@@ -447,9 +448,9 @@ function eptPte(gpa) {
         "contains " + hex(pdpte.value) + "     " +
         "contains " + hex(pde.value) + "     " +
         "contains " + hex(pte.value));
-    println("pfn " + pml4e + "    " +
-        "pfn " + pdpte + "    " +
-        "pfn " + pde + "    " +
+    println("pfn " + pml4e + "   " +
+        "pfn " + pdpte + "   " +
+        "pfn " + pde + "   " +
         "pfn " + pte);
 }
 
@@ -713,6 +714,7 @@ class EptFlags {
         this.read = bits(entry, 0, 1).asNumber();
         this.write = bits(entry, 1, 1).asNumber();
         this.execute = bits(entry, 2, 1).asNumber();
+        this.memoryType = bits(entry, 3, 3).asNumber();
         this.large = bits(entry, 7, 1).asNumber();
         this.executeForUserMode = bits(entry, 10, 1).asNumber();
         this.verifyGuestPaging = bits(entry, 57, 1).asNumber();
@@ -727,6 +729,7 @@ class EptFlags {
             { 1: "V", 0: "-" }[this.verifyGuestPaging] +
             { 1: "U", 0: "-" }[this.executeForUserMode] +
             { 1: "L", 0: "-" }[this.large] +
+            this.memoryType +
             { 1: "X", 0: "-" }[this.execute] +
             { 1: "W", 0: "-" }[this.write] +
             { 1: "R", 0: "-" }[this.read]
