@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -490,8 +490,8 @@ function pte(la) {
     let pdptAddress = pml4e.pfn.bitwiseShiftLeft(12);
     let pdpte = new PsEntry(readEntry(pdptAddress + 8 * i3));
     if (!pdpte.flags.present() || pdpte.flags.large) {
-        println("PML4e at " + hex(pml4Addr.add(8 * i4)) + "     " +
-            "PDPTe at " + hex(pdptAddr.add(8 * i3)));
+        println("PML4e at " + hex(pml4Address.add(8 * i4)) + "     " +
+            "PDPTe at " + hex(pdptAddress.add(8 * i3)));
         println("contains " + hex(pml4e.value) + "     " +
             "contains " + hex(pdpte.value));
         println("pfn " + pml4e + "   " +
