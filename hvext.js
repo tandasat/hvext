@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -601,7 +601,6 @@ function readVmcsUnsafe(encoding) {
 
 class EptPml4 {
     constructor(address) {
-        println("PML4 " + hex(address));
         this.address = address;
         this.entries = readPageAsTable(address, EptPdpt);
     }
@@ -609,7 +608,6 @@ class EptPml4 {
 
 class EptPdpt {
     constructor(address) {
-        println("    PDPT " + hex(address));
         this.address = address;
         this.entries = readPageAsTable(address, EptPd);
     }
@@ -617,7 +615,6 @@ class EptPdpt {
 
 class EptPd {
     constructor(address) {
-        println("        PD " + hex(address));
         this.address = address;
         this.entries = readPageAsTable(address, EptPt);
     }
@@ -625,7 +622,6 @@ class EptPd {
 
 class EptPt {
     constructor(address) {
-        println("            PT " + hex(address));
         this.address = address;
         this.entries = readPageAsTable(address);
     }
