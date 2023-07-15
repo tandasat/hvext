@@ -117,7 +117,6 @@ function hvextHelp(command) {
             println("pte [la] - Displays contents of paging structure entries used to translated the given LA.");
             println("");
             println("Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.");
-            println("      Many of the commands may corrupt system state and put it into an uncontainable situation.");
             break;
     }
 }
@@ -364,9 +363,11 @@ function dumpMsr(verbosity = 0) {
 // Implements the !dump_vmcs command.
 function dumpVmcs() {
     // Capture the current state.
-    let originalRax = host.currentThread.Registers.User.rax.toString(16);
-    let originalRip = host.currentThread.Registers.User.rip.toString(16);
-    let originalRflags = host.currentThread.Registers.User.efl.toString(16);
+    // eg: efl=00000242 rax=0000000000006c1c rip=fffff813d4f00ea1
+    let output = exec("r efl, rax, rip").Last()
+    let originalRflags = output.substring(4, 12);
+    let originalRax = output.substring(17, 33);
+    let originalRip = output.substring(38, 54);
 
     // Loop over the VMCS encodings.
     for (let i = 0; i < VMCS_ENCODINGS.length; i += 2) {
@@ -564,9 +565,11 @@ function getCurrentEptPml4() {
 // Reads a VMCS encoding.
 function readVmcs(encoding) {
     // Capture the current state.
-    let originalRax = host.currentThread.Registers.User.rax.toString(16);
-    let originalRip = host.currentThread.Registers.User.rip.toString(16);
-    let originalRflags = host.currentThread.Registers.User.efl.toString(16);
+    // eg: efl=00000242 rax=0000000000006c1c rip=fffff813d4f00ea1
+    let output = exec("r efl, rax, rip").Last()
+    let originalRflags = output.substring(4, 12);
+    let originalRax = output.substring(17, 33);
+    let originalRip = output.substring(38, 54);
 
     let value = readVmcsUnsafe(encoding);
 

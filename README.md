@@ -6,7 +6,7 @@ The Windbg extension that implements commands helpful to study Hyper-V on Intel 
 
 1. Attach a debugger to Hyper-V on a target. See [Setting up KDNET over USB EEM for Bootloader and Hyper-V debugging](https://tandasat.github.io/blog/windows/2023/03/21/setting-up-kdnet-over-usb-eem-for-bootloader-and-hyper-v-debugging.html) for details.
 
-2. Let the target boot until the Windows logon screen. This extension does not function at the stage of the first few break-ins, since processors are not in VMX root operation yet.
+2. Let the target run if the debugger breaks-in at initial connection. This extension does not function at this stage since processors are not in VMX root operation yet.
 
 3. Break-in the target Hyper-V.
 
@@ -29,7 +29,6 @@ The Windbg extension that implements commands helpful to study Hyper-V on Intel 
     pte [la] - Displays contents of paging structure entries used to translated the given LA.
 
     Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.
-          Many of the commands may corrupt system state and put it into an uncontainable situation.
     ```
 
 ## References and acknowledgement
