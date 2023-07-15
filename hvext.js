@@ -455,12 +455,16 @@ function eptPte(gpa) {
 }
 
 // Implements the !indexes command.
-function indexesFor(gpa) {
+function indexesFor(address) {
+    if (address == undefined) {
+        address = 0;
+    }
+
     return {
-        "Pt": bits(gpa, 12, 9).asNumber(),
-        "Pd": bits(gpa, 21, 9).asNumber(),
-        "Pdpt": bits(gpa, 30, 9).asNumber(),
-        "Pml4": bits(gpa, 39, 9).asNumber(),
+        "Pt": bits(address, 12, 9).asNumber(),
+        "Pd": bits(address, 21, 9).asNumber(),
+        "Pdpt": bits(address, 30, 9).asNumber(),
+        "Pml4": bits(address, 39, 9).asNumber(),
     };
 }
 
