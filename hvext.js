@@ -343,8 +343,8 @@ function dumpMsr(verbosity = 0) {
         // For the selected upper and lower 64bit entries, walk though each bit
         // position and construct `MsrEntry` from the pair of the bits.
         for (let bit_position = 0; bit_position < 64; bit_position += 1) {
-            let read_protected = bits(entry_low, bit_position, 1).asNumber();
-            let write_protected = bits(entry_hi, bit_position, 1).asNumber();
+            let read_protected = bits(entry_low, bit_position, 1);
+            let write_protected = bits(entry_hi, bit_position, 1);
             msrs.push(new MsrEntry(i * 64 + bit_position, read_protected, write_protected));
         }
     }
@@ -364,7 +364,7 @@ function dumpMsr(verbosity = 0) {
 function dumpVmcs() {
     // Capture the current state.
     // eg: efl=00000242 rax=0000000000006c1c rip=fffff813d4f00ea1
-    let output = exec("r efl, rax, rip").Last()
+    let output = exec("r efl, rax, rip").Last();
     let originalRflags = output.substring(4, 12);
     let originalRax = output.substring(17, 33);
     let originalRip = output.substring(38, 54);
@@ -462,10 +462,10 @@ function indexesFor(address) {
     }
 
     return {
-        "Pt": bits(address, 12, 9).asNumber(),
-        "Pd": bits(address, 21, 9).asNumber(),
-        "Pdpt": bits(address, 30, 9).asNumber(),
-        "Pml4": bits(address, 39, 9).asNumber(),
+        "Pt": bits(address, 12, 9),
+        "Pd": bits(address, 21, 9),
+        "Pdpt": bits(address, 30, 9),
+        "Pml4": bits(address, 39, 9),
     };
 }
 
@@ -566,7 +566,7 @@ function getCurrentEptPml4() {
 function readVmcs(encoding) {
     // Capture the current state.
     // eg: efl=00000242 rax=0000000000006c1c rip=fffff813d4f00ea1
-    let output = exec("r efl, rax, rip").Last()
+    let output = exec("r efl, rax, rip").Last();
     let originalRflags = output.substring(4, 12);
     let originalRax = output.substring(17, 33);
     let originalRip = output.substring(38, 54);
@@ -650,7 +650,7 @@ class PsEntry {
     constructor(entry) {
         this.value = entry;
         this.flags = new PsFlags(entry);
-        this.pfn = bits(entry, 12, 40).asNumber();
+        this.pfn = bits(entry, 12, 40);
     }
 
     toString() {
@@ -663,13 +663,13 @@ class PsEntry {
 // See: Figure 4-11. Formats of CR3 and Paging-Structure Entries with 4-Level Paging and 5-Level Paging
 class PsFlags {
     constructor(entry) {
-        this.valid = bits(entry, 0, 1).asNumber();
-        this.write = bits(entry, 1, 1).asNumber();
-        this.user = bits(entry, 2, 1).asNumber();
-        this.accessed = bits(entry, 5, 1).asNumber();
-        this.dirty = bits(entry, 6, 1).asNumber();
-        this.large = bits(entry, 7, 1).asNumber();
-        this.nonExecute = bits(entry, 63, 1).asNumber();
+        this.valid = bits(entry, 0, 1);
+        this.write = bits(entry, 1, 1);
+        this.user = bits(entry, 2, 1);
+        this.accessed = bits(entry, 5, 1);
+        this.dirty = bits(entry, 6, 1);
+        this.large = bits(entry, 7, 1);
+        this.nonExecute = bits(entry, 63, 1);
     }
 
     toString() {
@@ -698,7 +698,7 @@ class EptEntry {
     constructor(entry, nextTableType) {
         this.value = entry;
         this.flags = new EptFlags(entry);
-        this.pfn = bits(entry, 12, 40).asNumber();
+        this.pfn = bits(entry, 12, 40);
         if (this.flags.present() && !this.flags.large && nextTableType !== undefined) {
             this.nextTable = new nextTableType(this.pfn.bitwiseShiftLeft(12));
         }
@@ -714,15 +714,15 @@ class EptEntry {
 // See: Figure 29-1. Formats of EPTP and EPT Paging-Structure Entries
 class EptFlags {
     constructor(entry) {
-        this.read = bits(entry, 0, 1).asNumber();
-        this.write = bits(entry, 1, 1).asNumber();
-        this.execute = bits(entry, 2, 1).asNumber();
-        this.memoryType = bits(entry, 3, 3).asNumber();
-        this.large = bits(entry, 7, 1).asNumber();
-        this.executeForUserMode = bits(entry, 10, 1).asNumber();
-        this.verifyGuestPaging = bits(entry, 57, 1).asNumber();
-        this.pagingWriteAccess = bits(entry, 58, 1).asNumber();
-        this.supervisorShadowStack = bits(entry, 60, 1).asNumber();
+        this.read = bits(entry, 0, 1);
+        this.write = bits(entry, 1, 1);
+        this.execute = bits(entry, 2, 1);
+        this.memoryType = bits(entry, 3, 3);
+        this.large = bits(entry, 7, 1);
+        this.executeForUserMode = bits(entry, 10, 1);
+        this.verifyGuestPaging = bits(entry, 57, 1);
+        this.pagingWriteAccess = bits(entry, 58, 1);
+        this.supervisorShadowStack = bits(entry, 60, 1);
     }
 
     toString() {
@@ -750,7 +750,7 @@ class EptFlags {
 // Takes specified range of bits from the 64bit value.
 function bits(value, offset, size) {
     let mask = host.Int64(1).bitwiseShiftLeft(size).subtract(1);
-    return value.bitwiseShiftRight(offset).bitwiseAnd(mask);
+    return value.bitwiseShiftRight(offset).bitwiseAnd(mask).asNumber();
 }
 
 const print = msg => host.diagnostics.debugLog(msg);
