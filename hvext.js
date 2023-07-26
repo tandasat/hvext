@@ -1,10 +1,11 @@
-"use strict";
+﻿"use strict";
 
 // Registers commands.
 function initializeScript() {
     return [
         new host.apiVersionSupport(1, 7),
         new host.functionAlias(hvextHelp, "hvext_help"),
+        new host.functionAlias(dumpDmar, "dump_dmar"),
         new host.functionAlias(dumpEpt, "dump_ept"),
         new host.functionAlias(dumpMsr, "dump_msr"),
         new host.functionAlias(dumpVmcs, "dump_vmcs"),
@@ -80,6 +81,10 @@ function invokeScript() {
 // Implements the !hvext_help command.
 function hvextHelp(command) {
     switch (command) {
+        case "dump_dmar":
+            println("dump_dmar [pa] - Displays status and configurations of a DMA remapping unit.");
+            println("   pa - The PA of a DMAR remapping unit. It can be found in the DMAR ACPI table.");
+            break;
         case "dump_ept":
             println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
             println("   verbosity - 0 = Shows valid translations in a summarized format (default).");
@@ -100,7 +105,7 @@ function hvextHelp(command) {
             break;
         case "indexes":
             println("indexes [address] - Displays index values to walk paging structures for the given address.");
-            println("   gpa - A GPA to decode (default= 0).");
+            println("   address - An address to decode (default= 0).");
             break;
         case "pte":
             println("pte [la] - Displays contents of paging structure entries used to translated the given LA.");
@@ -109,6 +114,7 @@ function hvextHelp(command) {
         case undefined:
         default:
             println("hvext_help [command] - Displays this message.");
+            println("dump_dmar [pa] - Displays status and configurations of a DMA remapping unit.");
             println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
@@ -121,8 +127,174 @@ function hvextHelp(command) {
     }
 }
 
+// Implements the !dump_dmar command.
+function dumpDmar(baseAddr, verbosity) {
+    // See: 9.1 Root Entry
+    class RootEntry {
+        constructor(bus, low64, _high64) {
+            // The higher 64 bits are "Reserved".
+            this.value = low64;
+            this.bus = bus;
+            this.present = bits(low64, 0, 1);
+            this.contextTablePointer = low64.bitwiseAnd(~0xfff);
+            this.contextEntries = [];
+        }
+    }
+
+    // See: 9.3 Context Entry
+    class ContextEntry {
+        constructor(device, func, low64, high64) {
+            this.value = low64;
+            this.device = device;
+            this.func = func;
+            this.present = bits(low64, 0, 1);
+            this.translationType = bits(low64, 2, 2);
+            this.ssptPointer = (this.translationType == 0b10) ? "Passthrough" : low64.bitwiseAnd(~0xfff);
+            this.domainId = bits(high64, 9, 16);
+        }
+    }
+
+    class DeviceTranslation {
+        constructor(rootEntry, contextEntry) {
+            this.bus = (rootEntry) ? rootEntry.bus : 0;
+            this.device = (contextEntry) ? contextEntry.device : 0;
+            this.func = (contextEntry) ? contextEntry.func : 0;
+            this.passthrough = (contextEntry) ? (contextEntry.translationType == 0b10) : false;
+            this.ssptPointer = (contextEntry) ? contextEntry.ssptPointer : 0;
+        }
+
+        toString() {
+            return (this.passthrough ? "Passthrough" : hex(this.ssptPointer)) + " - " + this.bdf();
+        }
+
+        bdf() {
+            return "B" + this.bus + ",D" + this.device + ",F" + this.func;
+        }
+    }
+
+    if (baseAddr === undefined) {
+        println("Specify a physical address of the remapping hardware unit. " +
+            "It is typically 0xfed90000 and 0xfed91000 but may vary between models.");
+        return;
+    }
+
+    if (verbosity === undefined) {
+        verbosity = 0;
+    }
+
+    // Read remapping hardware registers.
+    // See: 11.4 Register Descriptions
+    //
+    // 2: kd> !dq 0xfed90000 l6
+    // #fed90000 00000000`00000010 01c0000c`40660462
+    // #fed90010 0000019e`2ff0505e c7000000`00000000
+    // #fed90020 00000001`044fe000 08000000`00000000
+    let qwords = [];
+    for (let line of exec("!dq " + hex(baseAddr.bitwiseAnd(~0xfff)) + " l6")) {
+        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
+        qwords.push(host.parseInt64(values[0], 16));
+        qwords.push(host.parseInt64(values[1], 16));
+    }
+    let version = qwords[0];                // 11.4.1 Version Register
+    let capability = qwords[1];             // 11.4.2 Capability Register
+    let capabilityEx = qwords[2];           // 11.4.3 Extended Capability Register
+    let status = bits(qwords[3], 32, 32);   // 11.4.4 Global Command Interface Registers
+    let rootTableAddr = qwords[4];          // 11.4.5 Root Table Address Register
+    println("Remapping unit at " + hex(baseAddr));
+    println("  version: " + bits(version, 4, 4) + "." + bits(version, 0, 4));
+    println("  capability: " + hex(capability));
+    println("  extended capability: " + hex(capabilityEx));
+    println("  status: " + hex(status));
+    println("  root table address: " + hex(rootTableAddr));
+    println("");
+
+    // Bail if DMA remapping is not enabled.
+    let translationEnableStatus = bits(status, 31, 1);
+    if (translationEnableStatus == 0) {
+        println("DMA remapping is not enabled.");
+        return;
+    }
+
+    // Bail if not in the legacy translation mode.
+    let translationTableMode = bits(rootTableAddr, 10, 2);
+    if (translationTableMode != 0b00) {
+        println("Unsupported TTM.");
+        return;
+    }
+
+    // Parse the root table.
+    // See: 3.4.2 Legacy Mode Address Translation
+    let rootEntries = [];
+    for (let line of exec("!dq " + hex(rootTableAddr.bitwiseAnd(~0xfff)) + " l200")) {
+        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
+        rootEntries.push(new RootEntry(
+            rootEntries.length,
+            host.parseInt64(values[0], 16),
+            host.parseInt64(values[1], 16)));
+    }
+
+    // Parse the context tables referenced from the root entries.
+    // See: 3.4.2 Legacy Mode Address Translation
+    for (let rootEntry of rootEntries) {
+        for (let line of exec("!dq " + hex(rootEntry.contextTablePointer) + " l200")) {
+            let values = line.replace(/`/g, "").substring(10).trim().split(" ");
+            rootEntry.contextEntries.push(new ContextEntry(
+                bits(rootEntry.contextEntries.length, 3, 5),
+                bits(rootEntry.contextEntries.length, 0, 3),
+                host.parseInt64(values[0], 16),
+                host.parseInt64(values[1], 16)));
+        }
+    }
+
+    // First, print which BDF is translated with which second stage page table
+    // (SSPT) structures. There are 65536 BDFs, but only a handful of SSPTs are
+    // used. So, summarize relation and gather the SSPTs into `ssptPointers`.
+    println("Translation   Device");
+    let ssptPointers = [];
+    let start = new DeviceTranslation();
+    let previous = new DeviceTranslation();
+    for (let rootEntry of rootEntries) {
+        for (let contextEntry of rootEntry.contextEntries) {
+            let current = new DeviceTranslation(rootEntry, contextEntry);
+
+            // If the current entry points to a different SSPT than before...
+            if (current.ssptPointer != start.ssptPointer) {
+                // Print it out (except the very first entry).
+                if (start.ssptPointer != 0) {
+                    if (start == previous) {
+                        println(previous);
+                    } else {
+                        println(start + " .. " + previous.bdf());
+                    }
+                }
+
+                // Save the SSPT except when it is pass-through, and record the
+                // current entry as a new start.
+                if (!current.passthrough) {
+                    ssptPointers.push(current.ssptPointer);
+                }
+                start = current;
+            }
+            previous = current;
+        }
+    }
+    // Print the last entry.
+    if (start == previous) {
+        println(previous);
+    } else {
+        println(start + " .. " + previous.bdf());
+    }
+
+    // Dump the all unique SSPTs. SSPTs have the same format as the EPT entries.
+    for (let ssptPointer of Array.from(new Set(ssptPointers))) {
+        println("");
+        println("Dumping second stage page tables at " + hex(ssptPointer));
+        dumpEpt(verbosity, getEptPml4(ssptPointer));
+    }
+}
+
 // Implements the !dump_ept command.
-function dumpEpt(verbosity = 0) {
+function dumpEpt(verbosity = 0, pml4) {
     class Region {
         constructor(gpa, pa, flags, size) {
             this.gpa = gpa;
@@ -150,7 +322,9 @@ function dumpEpt(verbosity = 0) {
     const SIZE_1GB = 0x40000000;
     const SIZE_512GB = 0x8000000000;
 
-    let pml4 = getCurrentEptPml4();
+    if (pml4 === undefined) {
+        pml4 = getCurrentEptPml4();
+    }
 
     // Walk through all EPT entries and accumulate them as regions.
     let regions = [];
@@ -550,9 +724,12 @@ function getCurrentEptPml4() {
     }
 
     println("Current EPT pointer " + hex(eptp));
+    return getEptPml4(eptp.bitwiseAnd(~0xfff));
+}
 
+// Returns fully-parsed EPT entries rooted from the specified address.
+function getEptPml4(pml4Addr) {
     // If this EPT is already in cache, return it.
-    let pml4Addr = eptp.bitwiseAnd(~0xfff);
     if (g_eptCache[pml4Addr]) {
         return g_eptCache[pml4Addr];
     }
