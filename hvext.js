@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -511,12 +511,12 @@ function dumpMsr(verbosity = 0) {
     // of MSRs. Let us walk the half of the `entries` and add offset 2048
     // (= 0x100 * 8) to look both segments in a single loop.
     let msrs = [];
-    for (let i = 0; i < 0x100; i += 1) {
+    for (let i = 0; i < 0x100; i++) {
         let entry_low = entries[i];
         let entry_hi = entries[i + 0x100];
         // For the selected upper and lower 64bit entries, walk though each bit
         // position and construct `MsrEntry` from the pair of the bits.
-        for (let bit_position = 0; bit_position < 64; bit_position += 1) {
+        for (let bit_position = 0; bit_position < 64; bit_position++) {
             let read_protected = bits(entry_low, bit_position, 1);
             let write_protected = bits(entry_hi, bit_position, 1);
             msrs.push(new MsrEntry(i * 64 + bit_position, read_protected, write_protected));
