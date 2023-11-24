@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -7,6 +7,7 @@ function initializeScript() {
         new host.functionAlias(hvextHelp, "hvext_help"),
         new host.functionAlias(dumpDmar, "dump_dmar"),
         new host.functionAlias(dumpEpt, "dump_ept"),
+        new host.functionAlias(dumpIo, "dump_io"),
         new host.functionAlias(dumpMsr, "dump_msr"),
         new host.functionAlias(dumpVmcs, "dump_vmcs"),
         new host.functionAlias(eptPte, "ept_pte"),
@@ -91,6 +92,9 @@ function hvextHelp(command) {
             println("               1 = Shows both valid and invalid translations in a summarized format.");
             println("               2 = Shows every valid translations without summarizing it.");
             break;
+        case "dump_io":
+            println("dump_io - Displays contents of the IO bitmaps.");
+            break;
         case "dump_msr":
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("   verbosity - 0 = Shows only MSRs that are not read or write protected (default).");
@@ -116,6 +120,7 @@ function hvextHelp(command) {
             println("hvext_help [command] - Displays this message.");
             println("dump_dmar [pa] - Displays status and configurations of a DMA remapping unit.");
             println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
+            println("dump_io - Displays contents of the IO bitmaps.");
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
             println("ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
@@ -460,6 +465,51 @@ function dumpEpt(verbosity = 0, pml4) {
         flags.supervisorShadowStack = leaf.flags.supervisorShadowStack;
         return flags;
     }
+}
+
+// Implements the !dump_io command.
+function dumpIo() {
+    class IoAccessibilityRange {
+        constructor(begin = undefined, end = undefined, intercepted = undefined) {
+            this.begin = begin;
+            this.end = end;
+            this.intercepted = intercepted;
+        }
+
+        toString() {
+            return (this.intercepted ? "-- " : "RW ") + hex(this.begin) +
+                (this.begin == this.end ? "" : " .. " + hex(this.end));
+        }
+    }
+
+    let bitmap_low = readVmcs(0x00002000);  // I/O bitmap A
+    let bitmap_high = readVmcs(0x00002002);  // I/O bitmap B
+
+    // Convert the 4KB contents into an array of 64bit integers for processing.
+    let entries = [];
+    parseEach16Bytes(bitmap_low, 0x100, (l, h) => entries.push(l, h));
+    parseEach16Bytes(bitmap_high, 0x100, (l, h) => entries.push(l, h));
+
+    var ranges = [];
+    var range = undefined;
+    var port = 0;
+    for (let entry of entries) {
+        for (let bit_position = 0; bit_position < 64; bit_position++, port++) {
+            let intercepted = bits(entry, bit_position, 1);
+            if (port == 0) {
+                range = new IoAccessibilityRange(port, port, intercepted);
+            } else if (range.intercepted == intercepted) {
+                // Interception status remained same. Just extend the range.
+                range.end = port;
+            } else {
+                // Interception status changed. Save the range and start a new one.
+                ranges.push(range);
+                range = new IoAccessibilityRange(port, port, intercepted);
+            }
+        }
+    }
+    ranges.push(range);
+    ranges.map(println);
 }
 
 // Implements the !dump_msr command.
