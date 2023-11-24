@@ -190,11 +190,7 @@ function dumpDmar(baseAddr, verbosity) {
     // #fed90010 0000019e`2ff0505e c7000000`00000000
     // #fed90020 00000001`044fe000 08000000`00000000
     let qwords = [];
-    for (let line of exec("!dq " + hex(baseAddr.bitwiseAnd(~0xfff)) + " l6")) {
-        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
-        qwords.push(host.parseInt64(values[0], 16));
-        qwords.push(host.parseInt64(values[1], 16));
-    }
+    parseEach16Bytes(baseAddr.bitwiseAnd(~0xfff), 3, (l, h) => qwords.push(l, h));
     let version = qwords[0];                // 11.4.1 Version Register
     let capability = qwords[1];             // 11.4.2 Capability Register
     let capabilityEx = qwords[2];           // 11.4.3 Extended Capability Register
@@ -225,25 +221,18 @@ function dumpDmar(baseAddr, verbosity) {
     // Parse the root table.
     // See: 3.4.2 Legacy Mode Address Translation
     let rootEntries = [];
-    for (let line of exec("!dq " + hex(rootTableAddr.bitwiseAnd(~0xfff)) + " l200")) {
-        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
-        rootEntries.push(new RootEntry(
-            rootEntries.length,
-            host.parseInt64(values[0], 16),
-            host.parseInt64(values[1], 16)));
-    }
+    parseEach16Bytes(rootTableAddr.bitwiseAnd(~0xfff), 0x100, (l, h) =>
+        rootEntries.push(new RootEntry(rootEntries.length, l, h)));
 
     // Parse the context tables referenced from the root entries.
     // See: 3.4.2 Legacy Mode Address Translation
     for (let rootEntry of rootEntries) {
-        for (let line of exec("!dq " + hex(rootEntry.contextTablePointer) + " l200")) {
-            let values = line.replace(/`/g, "").substring(10).trim().split(" ");
+        parseEach16Bytes(rootEntry.contextTablePointer, 0x100, (l, h) =>
             rootEntry.contextEntries.push(new ContextEntry(
                 bits(rootEntry.contextEntries.length, 3, 5),
                 bits(rootEntry.contextEntries.length, 0, 3),
-                host.parseInt64(values[0], 16),
-                host.parseInt64(values[1], 16)));
-        }
+                l,
+                h)));
     }
 
     // First, print which BDF is translated with which second stage page table
@@ -500,11 +489,7 @@ function dumpMsr(verbosity = 0) {
 
     // Convert the 4KB contents into an array of 64bit integers for processing.
     let entries = [];
-    for (let line of exec("!dq " + hex(bitmap.bitwiseAnd(~0xfff)) + " l200")) {
-        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
-        entries.push(host.parseInt64(values[0], 16));
-        entries.push(host.parseInt64(values[1], 16));
-    }
+    parseEach16Bytes(bitmap.bitwiseAnd(~0xfff), 0x100, (l, h) => entries.push(l, h));
 
     // The MSR bitmaps are made up of two 2048 bytes segments. The first segment
     // manages read access, and the 2nd manages write access, for the same ranges
@@ -814,20 +799,8 @@ class EptPt {
 // Reads a physical address for 4KB and constructs a table with 512 EPT entries.
 function readPageAsTable(address, nextTableType) {
     let entries = [];
-    for (let line of exec("!dq " + hex(address.bitwiseAnd(~0xfff)) + " l200")) {
-        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
-        var x, y;
-        try {
-            x = host.parseInt64(values[0], 16)
-            y = host.parseInt64(values[1], 16)
-        } catch (error) {
-            println(values[0]);
-            println(values[1]);
-            throw error;
-        }
-        entries.push(new EptEntry(x, nextTableType));
-        entries.push(new EptEntry(y, nextTableType));
-    }
+    parseEach16Bytes(address.bitwiseAnd(~0xfff), 0x100, (l, h) =>
+        entries.push(new EptEntry(l, nextTableType), new EptEntry(h, nextTableType)));
     return entries;
 }
 
@@ -937,6 +910,21 @@ class EptFlags {
 function bits(value, offset, size) {
     let mask = host.Int64(1).bitwiseShiftLeft(size).subtract(1);
     return value.bitwiseShiftRight(offset).bitwiseAnd(mask).asNumber();
+}
+
+// Parses 16 bytes at the given physical address into two 8 byte integers.
+function parseEach16Bytes(physicalAddress, count, callback) {
+    for (let line of exec("!dq " + hex(physicalAddress) + " l" + hex(count * 2))) {
+        let values = line.replace(/`/g, "").substring(10).trim().split(" ");
+        var low, high;
+        try {
+            low = host.parseInt64(values[0], 16);
+            high = host.parseInt64(values[1], 16);
+        } catch (error) {
+            throw new Error("Failed to parse: " + values);
+        }
+        callback(low, high);
+    }
 }
 
 const print = msg => host.diagnostics.debugLog(msg);
