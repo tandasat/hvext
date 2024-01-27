@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -127,7 +127,7 @@ function hvextHelp(command) {
             println("indexes [address] - Displays index values to walk paging structures for the given address.");
             println("pte [la] - Displays contents of paging structure entries used to translated the given LA.");
             println("");
-            println("Note: When executing those commands, the processor must be in VMX-root operation with an active VMCS.");
+            println("Note: When executing some of those commands, the processor must be in VMX-root operation with an active VMCS.");
             break;
     }
 }
