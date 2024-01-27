@@ -482,6 +482,17 @@ function dumpIo() {
         }
     }
 
+    let exec_control = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(exec_control, 25, 1) == 0) {
+        // Check "unconditional I/O exiting"
+        if (bits(exec_control, 24, 1) == 0) {
+            println("IO bitmaps are not used. IO port access does not cause VM-exit");
+        } else {
+            println("IO port access unconditionally causes VM-exit");
+        }
+        return;
+    }
+
     let bitmap_low = readVmcs(0x00002000);  // I/O bitmap A
     let bitmap_high = readVmcs(0x00002002);  // I/O bitmap B
 
@@ -533,6 +544,12 @@ function dumpMsr(verbosity = 0) {
                 hex(this.msr)
             );
         }
+    }
+
+    let exec_control = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(exec_control, 28, 1) == 0) {
+        println("MSR bitmaps are not used. MSR access unconditionally causes VM-exit.");
+        return;
     }
 
     let bitmap = readVmcs(0x00002004);  // MSR bitmaps
