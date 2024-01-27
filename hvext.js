@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 // Registers commands.
 function initializeScript() {
@@ -17,10 +17,10 @@ function initializeScript() {
 }
 
 // Cache of fully-parsed EPT, keyed by EPTP.
-var g_eptCache = {};
+let g_eptCache = {};
 
 // The virtual address of (the first) "VMREAD RAX, RAX" in the HV image range.
-var g_vmreadAddress = null;
+let g_vmreadAddress = null;
 
 // Initializes the extension.
 function invokeScript() {
@@ -300,14 +300,14 @@ function dumpEpt(verbosity = 0, pml4) {
 
         toString() {
             // If this is identify mapping, display so instead of actual PA.
-            let translation = (current_region.identifyMapping) ?
+            let translation = (this.identifyMapping) ?
                 "Identity".padEnd(12) :
-                hex(current_region.pa).padStart(12);
+                hex(this.pa).padStart(12);
 
-            return hex(current_region.gpa).padStart(12) + " - " +
-                hex(current_region.gpa + current_region.size).padStart(12) + " -> " +
+            return hex(this.gpa).padStart(12) + " - " +
+                hex(this.gpa + this.size).padStart(12) + " -> " +
                 translation + " " +
-                current_region.flags;
+                this.flags;
         }
     }
 
@@ -322,7 +322,7 @@ function dumpEpt(verbosity = 0, pml4) {
 
     // Walk through all EPT entries and accumulate them as regions.
     let regions = [];
-    for (var gpa = 0, page_size = 0; ; gpa += page_size) {
+    for (let gpa = 0, page_size = 0; ; gpa += page_size) {
         let indexFor = indexesFor(gpa);
         let i1 = indexFor.Pt;
         let i2 = indexFor.Pd;
@@ -394,7 +394,7 @@ function dumpEpt(verbosity = 0, pml4) {
         println("GPA                            PA           Flags");
 
         // Combine regions that are effectively contiguous.
-        var current_region = null;
+        let current_region = null;
         for (let region of regions) {
             if (current_region === null) {
                 current_region = region;
@@ -444,7 +444,7 @@ function dumpEpt(verbosity = 0, pml4) {
         flags.execute = pml4e.flags.execute & pdpte.flags.execute;
         flags.executeForUserMode = pml4e.flags.executeForUserMode & pdpte.flags.executeForUserMode;
 
-        var leaf = pdpte;
+        let leaf = pdpte;
         if (pde) {
             leaf = pde;
             flags.read &= pde.flags.read;
@@ -490,9 +490,9 @@ function dumpIo() {
     parseEach16Bytes(bitmap_low, 0x100, (l, h) => entries.push(l, h));
     parseEach16Bytes(bitmap_high, 0x100, (l, h) => entries.push(l, h));
 
-    var ranges = [];
-    var range = undefined;
-    var port = 0;
+    let ranges = [];
+    let range = undefined;
+    let port = 0;
     for (let entry of entries) {
         for (let bit_position = 0; bit_position < 64; bit_position++, port++) {
             let intercepted = bits(entry, bit_position, 1);
@@ -966,12 +966,11 @@ function bits(value, offset, size) {
 function parseEach16Bytes(physicalAddress, count, callback) {
     for (let line of exec("!dq " + hex(physicalAddress) + " l" + hex(count * 2))) {
         let values = line.replace(/`/g, "").substring(10).trim().split(" ");
-        var low, high;
         try {
-            low = host.parseInt64(values[0], 16);
-            high = host.parseInt64(values[1], 16);
+            var low = host.parseInt64(values[0], 16);
+            var high = host.parseInt64(values[1], 16);
         } catch (error) {
-            throw new Error("Failed to parse: " + values);
+            throw new Error("Failed to parse: " + line);
         }
         callback(low, high);
     }
