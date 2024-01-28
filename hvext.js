@@ -486,9 +486,9 @@ function dumpIo() {
     if (bits(exec_control, 25, 1) == 0) {
         // Check "unconditional I/O exiting"
         if (bits(exec_control, 24, 1) == 0) {
-            println("IO bitmaps are not used. IO port access does not cause VM-exit");
+            println("IO bitmaps are not used. IO port access does not cause VM-exit.");
         } else {
-            println("IO port access unconditionally causes VM-exit");
+            println("IO port access unconditionally causes VM-exit.");
         }
         return;
     }
@@ -770,6 +770,16 @@ function pte(la) {
 
 // Returns fully-parsed EPT entries pointed by the current EPTP VMCS encoding.
 function getCurrentEptPml4() {
+    let exec_control1 = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(exec_control1, 31, 1) == 0) {
+        throw new Error("EPT is not enabled");
+    }
+
+    let exec_control2 = readVmcs(0x0000401E);    // Secondary processor-based VM-execution controls
+    if (bits(exec_control2, 1, 1) == 0) {
+        throw new Error("EPT is not enabled");
+    }
+
     let eptp = readVmcs(0x0000201A);  // EPT pointer
     if (eptp === undefined) {
         throw new Error("The VMREAD instruction failed");
