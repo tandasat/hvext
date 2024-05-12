@@ -101,7 +101,7 @@ function hvextHelp(command) {
             println("               1 = Shows protections of all MSRs managed by the MSR bitmaps.");
             break;
         case "dump_vmcs":
-            println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
+            println("dump_vmcs - Displays contents of the current VMCS.");
             break;
         case "ept_pte":
             println("ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA");
@@ -122,7 +122,7 @@ function hvextHelp(command) {
             println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
             println("dump_io - Displays contents of the IO bitmaps.");
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
-            println("dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.");
+            println("dump_vmcs - Displays contents of the current VMCS.");
             println("ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA.");
             println("indexes [address] - Displays index values to walk paging structures for the given address.");
             println("pte [la] - Displays contents of paging structure entries used to translated the given LA.");
@@ -382,17 +382,11 @@ function dumpEpt(verbosity = 0, pml4) {
     }
 
     // Display gathered regions.
+    println("GPA                            PA           Flags");
     if (verbosity == 2) {
         // Just dump all regions.
-        println("GPA             PA           Flags");
-        for (let region of regions) {
-            println(hex(region.gpa).padStart(12) + " -> " +
-                hex(region.pa).padStart(12) + " " +
-                region.flags);
-        }
+        regions.map(println);
     } else {
-        println("GPA                            PA           Flags");
-
         // Combine regions that are effectively contiguous.
         let current_region = null;
         for (let region of regions) {
@@ -801,7 +795,7 @@ function getEptPml4(pml4Addr) {
     return g_eptCache[pml4Addr];
 }
 
-// Reads a VMCS encoding.
+// Reads a VMCS encoding. Returns 'undefined' if read fails.
 function readVmcs(encoding) {
     // Capture the current state.
     // eg: efl=00000242 rax=0000000000006c1c rip=fffff813d4f00ea1
@@ -848,33 +842,33 @@ function readVmcsUnsafe(encoding) {
 class EptPml4 {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsTable(address, EptPdpt);
+        this.entries = readPageAsEptEntries(address, EptPdpt);
     }
 }
 
 class EptPdpt {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsTable(address, EptPd);
+        this.entries = readPageAsEptEntries(address, EptPd);
     }
 }
 
 class EptPd {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsTable(address, EptPt);
+        this.entries = readPageAsEptEntries(address, EptPt);
     }
 }
 
 class EptPt {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsTable(address);
+        this.entries = readPageAsEptEntries(address);
     }
 }
 
 // Reads a physical address for 4KB and constructs a table with 512 EPT entries.
-function readPageAsTable(address, nextTableType) {
+function readPageAsEptEntries(address, nextTableType) {
     let entries = [];
     parseEach16Bytes(address.bitwiseAnd(~0xfff), 0x100, (l, h) =>
         entries.push(new EptEntry(l, nextTableType), new EptEntry(h, nextTableType)));

@@ -24,7 +24,7 @@ The Windbg extension that implements commands helpful to study Hyper-V on Intel 
     dump_dmar [pa] - Displays status and configurations of a DMA remapping unit.
     dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.
     dump_msr [verbosity] - Displays contents of the MSR bitmaps.
-    dump_vmcs - Displays contents of all VMCS encodings for ths current VMCS.
+    dump_vmcs - Displays contents of the current VMCS.
     ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA.
     indexes [address] - Displays index values to walk paging structures for the given address.
     pte [la] - Displays contents of paging structure entries used to translated the given LA.
