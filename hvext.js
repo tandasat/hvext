@@ -608,9 +608,12 @@ function dumpVmcs() {
 }
 
 // Implements the !ept_pte command.
-function eptPte(gpa) {
-    if (gpa == undefined) {
+function eptPte(gpa, pml4) {
+    if (gpa === undefined) {
         gpa = 0;
+    }
+    if (pml4 === undefined) {
+        pml4 = getCurrentEptPml4();
     }
 
     let indexFor = indexesFor(gpa);
@@ -620,7 +623,6 @@ function eptPte(gpa) {
     let i4 = indexFor.Pml4;
 
     // Pick and check PML4e.
-    let pml4 = getCurrentEptPml4();
     let pml4e = pml4.entries[i4];
     if (!pml4e.flags.present()) {
         println("PML4e at " + hex(pml4.address.add(8 * i4)));
@@ -690,9 +692,12 @@ function indexesFor(address) {
 }
 
 // Implements the !pte command.
-function pte(la) {
-    if (la == undefined) {
+function pte(la, pml4) {
+    if (la === undefined) {
         la = 0;
+    }
+    if (pml4 === undefined) {
+        pml4 = host.currentThread.Registers.Kernel.cr3.bitwiseAnd(~0xfff);
     }
 
     let indexFor = indexesFor(la);
@@ -702,21 +707,20 @@ function pte(la) {
     let i4 = indexFor.Pml4;
 
     // Pick and check PML4e.
-    let pml4Address = host.currentThread.Registers.Kernel.cr3.bitwiseAnd(~0xfff);
-    let pml4e = new PsEntry(readEntry(pml4Address + 8 * i4));
+    let pml4e = new PsEntry(readEntry(pml4 + 8 * i4));
     if (!pml4e.flags.present()) {
-        println("PML4e at " + hex(pml4Address.add(8 * i4)));
+        println("PML4e at " + hex(pml4.add(8 * i4)));
         println("contains " + hex(pml4e.value));
         println("pfn " + pml4e);
         return;
     }
 
     // Pick and check PDPTe.
-    let pdptAddress = pml4e.pfn.bitwiseShiftLeft(12);
-    let pdpte = new PsEntry(readEntry(pdptAddress + 8 * i3));
+    let pdpt = pml4e.pfn.bitwiseShiftLeft(12);
+    let pdpte = new PsEntry(readEntry(pdpt + 8 * i3));
     if (!pdpte.flags.present() || pdpte.flags.large) {
-        println("PML4e at " + hex(pml4Address.add(8 * i4)) + "     " +
-            "PDPTe at " + hex(pdptAddress.add(8 * i3)));
+        println("PML4e at " + hex(pml4.add(8 * i4)) + "     " +
+            "PDPTe at " + hex(pdpt.add(8 * i3)));
         println("contains " + hex(pml4e.value) + "     " +
             "contains " + hex(pdpte.value));
         println("pfn " + pml4e + "   " +
@@ -725,12 +729,12 @@ function pte(la) {
     }
 
     // Pick and check PDe.
-    let pdAddress = pdpte.pfn.bitwiseShiftLeft(12);
-    let pde = new PsEntry(readEntry(pdAddress + 8 * i2));
+    let pd = pdpte.pfn.bitwiseShiftLeft(12);
+    let pde = new PsEntry(readEntry(pd + 8 * i2));
     if (!pde.flags.present() || pde.flags.large) {
-        println("PML4e at " + hex(pml4Address.add(8 * i4)) + "     " +
-            "PDPTe at " + hex(pdptAddress.add(8 * i3)) + "     " +
-            "PDe at " + hex(pdAddress.add(8 * i2)));
+        println("PML4e at " + hex(pml4.add(8 * i4)) + "     " +
+            "PDPTe at " + hex(pdpt.add(8 * i3)) + "     " +
+            "PDe at " + hex(pd.add(8 * i2)));
         println("contains " + hex(pml4e.value) + "     " +
             "contains " + hex(pdpte.value) + "     " +
             "contains " + hex(pde.value));
@@ -741,12 +745,12 @@ function pte(la) {
     }
 
     // Pick PTe.
-    let ptAddress = pde.pfn.bitwiseShiftLeft(12);
-    let pte = new PsEntry(readEntry(ptAddress + 8 * i1));
-    println("PML4e at " + hex(pml4Address.add(8 * i4)) + "     " +
-        "PDPTe at " + hex(pdptAddress.add(8 * i3)) + "     " +
-        "PDe at " + hex(pdAddress.add(8 * i2)) + "       " +
-        "PTe at " + hex(ptAddress.add(8 * i1)));
+    let pt = pde.pfn.bitwiseShiftLeft(12);
+    let pte = new PsEntry(readEntry(pt + 8 * i1));
+    println("PML4e at " + hex(pml4.add(8 * i4)) + "     " +
+        "PDPTe at " + hex(pdpt.add(8 * i3)) + "     " +
+        "PDe at " + hex(pd.add(8 * i2)) + "       " +
+        "PTe at " + hex(pt.add(8 * i1)));
     println("contains " + hex(pml4e.value) + "     " +
         "contains " + hex(pdpte.value) + "     " +
         "contains " + hex(pde.value) + "     " +
@@ -785,13 +789,10 @@ function getCurrentEptPml4() {
 
 // Returns fully-parsed EPT entries rooted from the specified address.
 function getEptPml4(pml4Addr) {
-    // If this EPT is already in cache, return it.
-    if (g_eptCache[pml4Addr]) {
-        return g_eptCache[pml4Addr];
-    }
-
-    // Otherwise, parse it and populate cache.
+    // Cache fully parsed EPT if it is new, and return it.
+    if (!g_eptCache[pml4Addr]) {
     g_eptCache[pml4Addr] = new EptPml4(pml4Addr);
+    }
     return g_eptCache[pml4Addr];
 }
 
