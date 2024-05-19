@@ -382,37 +382,37 @@ function dumpEpt(verbosity = 0, pml4) {
     }
 
     // Display gathered regions.
-    println("GPA                            PA           Flags");
-    if (verbosity == 2) {
+    println("GPA [begin, end)               PA           Flags");
+    if (verbosity > 1) {
         // Just dump all regions.
         regions.map(println);
     } else {
         // Combine regions that are effectively contiguous.
-        let current_region = null;
+        let combined_region = null;
         for (let region of regions) {
-            if (current_region === null) {
-                current_region = region;
+            if (combined_region === null) {
+                combined_region = region;
                 continue;
             }
 
             // Is this region contiguous to the current region? That is, both
             // identify mapped, have the same flags and corresponding GPAs are
             // contiguous.
-            if (current_region.identifyMapping &&
+            if (combined_region.identifyMapping &&
                 region.identifyMapping &&
-                current_region.flags.toString() == region.flags.toString() &&
-                current_region.gpa + current_region.size == region.gpa) {
+                combined_region.flags.toString() == region.flags.toString() &&
+                combined_region.gpa + combined_region.size == region.gpa) {
                 // It is contiguous. Just expand the size.
-                current_region.size += region.size;
+                combined_region.size += region.size;
             } else {
-                // It is not. Display the current region.
-                println(current_region);
+                // It is not contiguous. Display the current region.
+                println(combined_region);
 
-                // If not, see if there is an unmapped regions before this region.
-                if (verbosity == 1 &&
-                    current_region.gpa + current_region.size != region.gpa) {
+                // See if there is an unmapped regions before this region.
+                if (verbosity > 0 &&
+                    combined_region.gpa + combined_region.size != region.gpa) {
                     //  Yes, there is. Display that.
-                    let unmapped_base = current_region.gpa + current_region.size;
+                    let unmapped_base = combined_region.gpa + combined_region.size;
                     let unmapped_size = region.gpa - unmapped_base;
                     println(hex(unmapped_base).padStart(12) + " - " +
                         hex(unmapped_base + unmapped_size).padStart(12) + " -> " +
@@ -421,12 +421,12 @@ function dumpEpt(verbosity = 0, pml4) {
                 }
 
                 // Move on, and start checking contiguous regions from this region.
-                current_region = region;
+                combined_region = region;
             }
         }
 
         // Display the last one.
-        println(current_region);
+        println(combined_region);
     }
 
     // Computes the effective flag value from the given EPT entries. The large bit
@@ -635,11 +635,11 @@ function eptPte(gpa, pml4) {
     let pdpt = pml4e.nextTable;
     let pdpte = pdpt.entries[i3];
     if (!pdpte.flags.present() || pdpte.flags.large) {
-        println("PML4e at " + hex(pml4.address.add(8 * i4)) + "     " +
+        println("PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
             "PDPTe at " + hex(pdpt.address.add(8 * i3)));
-        println("contains " + hex(pml4e.value) + "     " +
+        println("contains " + hex(pml4e.value).padEnd(18) +
             "contains " + hex(pdpte.value));
-        println("pfn " + pml4e + "   " +
+        println("pfn " + (pml4e + "").padEnd(23) +
             "pfn " + pdpte);
         return;
     }
@@ -648,14 +648,14 @@ function eptPte(gpa, pml4) {
     let pd = pdpte.nextTable;
     let pde = pd.entries[i2];
     if (!pde.flags.present() || pde.flags.large) {
-        println("PML4e at " + hex(pml4.address.add(8 * i4)) + "     " +
-            "PDPTe at " + hex(pdpt.address.add(8 * i3)) + "     " +
+        println("PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
+            "PDPTe at " + hex(pdpt.address.add(8 * i3)).padEnd(18) +
             "PDe at " + hex(pd.address.add(8 * i2)));
-        println("contains " + hex(pml4e.value) + "     " +
-            "contains " + hex(pdpte.value) + "     " +
+        println("contains " + hex(pml4e.value).padEnd(18) +
+            "contains " + hex(pdpte.value).padEnd(18) +
             "contains " + hex(pde.value));
-        println("pfn " + pml4e + "   " +
-            "pfn " + pdpte + "   " +
+        println("pfn " + (pml4e + "").padEnd(23) +
+            "pfn " + (pdpte + "").padEnd(23) +
             "pfn " + pde);
         return;
     }
@@ -663,17 +663,17 @@ function eptPte(gpa, pml4) {
     // Pick PTe.
     let pt = pde.nextTable;
     let pte = pt.entries[i1];
-    println("PML4e at " + hex(pml4.address.add(8 * i4)) + "     " +
-        "PDPTe at " + hex(pdpt.address.add(8 * i3)) + "     " +
-        "PDe at " + hex(pd.address.add(8 * i2)) + "       " +
+    println("PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
+        "PDPTe at " + hex(pdpt.address.add(8 * i3)).padEnd(18) +
+        "PDe at " + hex(pd.address.add(8 * i2)).padEnd(20) +
         "PTe at " + hex(pt.address.add(8 * i1)));
-    println("contains " + hex(pml4e.value) + "     " +
-        "contains " + hex(pdpte.value) + "     " +
-        "contains " + hex(pde.value) + "     " +
+    println("contains " + hex(pml4e.value).padEnd(18) +
+        "contains " + hex(pdpte.value).padEnd(18) +
+        "contains " + hex(pde.value).padEnd(18) +
         "contains " + hex(pte.value));
-    println("pfn " + pml4e + "   " +
-        "pfn " + pdpte + "   " +
-        "pfn " + pde + "   " +
+    println("pfn " + (pml4e + "").padEnd(23) +
+        "pfn " + (pdpte + "").padEnd(23) +
+        "pfn " + (pde + "").padEnd(23) +
         "pfn " + pte);
 }
 
@@ -719,11 +719,11 @@ function pte(la, pml4) {
     let pdpt = pml4e.pfn.bitwiseShiftLeft(12);
     let pdpte = new PsEntry(readEntry(pdpt + 8 * i3));
     if (!pdpte.flags.present() || pdpte.flags.large) {
-        println("PML4e at " + hex(pml4.add(8 * i4)) + "     " +
+        println("PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
             "PDPTe at " + hex(pdpt.add(8 * i3)));
-        println("contains " + hex(pml4e.value) + "     " +
+        println("contains " + hex(pml4e.value).padEnd(18) +
             "contains " + hex(pdpte.value));
-        println("pfn " + pml4e + "   " +
+        println("pfn " + (pml4e + "").padEnd(23) +
             "pfn " + pdpte);
         return;
     }
@@ -732,14 +732,14 @@ function pte(la, pml4) {
     let pd = pdpte.pfn.bitwiseShiftLeft(12);
     let pde = new PsEntry(readEntry(pd + 8 * i2));
     if (!pde.flags.present() || pde.flags.large) {
-        println("PML4e at " + hex(pml4.add(8 * i4)) + "     " +
-            "PDPTe at " + hex(pdpt.add(8 * i3)) + "     " +
+        println("PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
+            "PDPTe at " + hex(pdpt.add(8 * i3)).padEnd(18) +
             "PDe at " + hex(pd.add(8 * i2)));
-        println("contains " + hex(pml4e.value) + "     " +
-            "contains " + hex(pdpte.value) + "     " +
+        println("contains " + hex(pml4e.value).padEnd(18) +
+            "contains " + hex(pdpte.value).padEnd(18) +
             "contains " + hex(pde.value));
-        println("pfn " + pml4e + "   " +
-            "pfn " + pdpte + "   " +
+        println("pfn " + (pml4e + "").padEnd(23) +
+            "pfn " + (pdpte + "").padEnd(23) +
             "pfn " + pde);
         return;
     }
@@ -747,17 +747,17 @@ function pte(la, pml4) {
     // Pick PTe.
     let pt = pde.pfn.bitwiseShiftLeft(12);
     let pte = new PsEntry(readEntry(pt + 8 * i1));
-    println("PML4e at " + hex(pml4.add(8 * i4)) + "     " +
-        "PDPTe at " + hex(pdpt.add(8 * i3)) + "     " +
-        "PDe at " + hex(pd.add(8 * i2)) + "       " +
+    println("PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
+        "PDPTe at " + hex(pdpt.add(8 * i3)).padEnd(18) +
+        "PDe at " + hex(pd.add(8 * i2)).padEnd(20) +
         "PTe at " + hex(pt.add(8 * i1)));
-    println("contains " + hex(pml4e.value) + "     " +
-        "contains " + hex(pdpte.value) + "     " +
-        "contains " + hex(pde.value) + "     " +
+    println("contains " + hex(pml4e.value).padEnd(18) +
+        "contains " + hex(pdpte.value).padEnd(18) +
+        "contains " + hex(pde.value).padEnd(18) +
         "contains " + hex(pte.value));
-    println("pfn " + pml4e + "   " +
-        "pfn " + pdpte + "   " +
-        "pfn " + pde + "   " +
+    println("pfn " + (pml4e + "").padEnd(23) +
+        "pfn " + (pdpte + "").padEnd(23) +
+        "pfn " + (pde + "").padEnd(23) +
         "pfn " + pte);
 
     function readEntry(address) {
