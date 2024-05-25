@@ -32,6 +32,11 @@ The Windbg extension that implements commands helpful to study Hyper-V on Intel 
     Note: When executing some of those commands, the processor must be in VMX-root operation with an active VMCS.
     ```
 
+If you encounter stability issues, consider making the target a single core with:
+```
+> bcdedit /set numproc 1
+```
+
 ## References and acknowledgement
 - [@ergot86's implementation](https://github.com/ergot86/crap/blob/main/hyperv_stuff.js) as the base of this script.
 - [@0vercl0k's amazing introduction](https://doar-e.github.io/blog/2017/12/01/debugger-data-model/) to Windbg Preview, including authoring extensions.
