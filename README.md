@@ -22,7 +22,9 @@ The Windbg extension that implements commands helpful to study Hyper-V on Intel 
     kd> !hvext_help
     hvext_help [command] - Displays this message.
     dump_dmar [pa] - Displays status and configurations of a DMA remapping unit.
-    dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.
+    dump_ept [verbosity] - Displays guest physical address translation managed through EPT.
+    dump_hlat [verbosity] - Displays linear address translation managed through HLAT.
+    dump_io - Displays contents of the IO bitmaps.
     dump_msr [verbosity] - Displays contents of the MSR bitmaps.
     dump_vmcs - Displays contents of the current VMCS.
     ept_pte [gpa] - Displays contents of EPT entries used to translated the given GPA.

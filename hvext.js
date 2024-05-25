@@ -7,6 +7,7 @@ function initializeScript() {
         new host.functionAlias(hvextHelp, "hvext_help"),
         new host.functionAlias(dumpDmar, "dump_dmar"),
         new host.functionAlias(dumpEpt, "dump_ept"),
+        new host.functionAlias(dumpHlat, "dump_hlat"),
         new host.functionAlias(dumpIo, "dump_io"),
         new host.functionAlias(dumpMsr, "dump_msr"),
         new host.functionAlias(dumpVmcs, "dump_vmcs"),
@@ -18,6 +19,9 @@ function initializeScript() {
 
 // Cache of fully-parsed EPT, keyed by EPTP.
 let g_eptCache = {};
+
+// Cache of unparsed HLAT tables, keyed by an address of the tables.
+let g_hlatCache = {};
 
 // The virtual address of (the first) "VMREAD RAX, RAX" in the HV image range.
 let g_vmreadAddress = null;
@@ -87,7 +91,13 @@ function hvextHelp(command) {
             println("   pa - The PA of a DMAR remapping unit. It can be found in the DMAR ACPI table.");
             break;
         case "dump_ept":
-            println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
+            println("dump_ept [verbosity] - Displays guest physical address translation managed through EPT.");
+            println("   verbosity - 0 = Shows valid translations in a summarized format (default).");
+            println("               1 = Shows both valid and invalid translations in a summarized format.");
+            println("               2 = Shows every valid translations without summarizing it.");
+            break;
+        case "dump_hlat":
+            println("dump_hlat [verbosity] - Displays linear address translation managed through HLAT.");
             println("   verbosity - 0 = Shows valid translations in a summarized format (default).");
             println("               1 = Shows both valid and invalid translations in a summarized format.");
             println("               2 = Shows every valid translations without summarizing it.");
@@ -119,7 +129,8 @@ function hvextHelp(command) {
         default:
             println("hvext_help [command] - Displays this message.");
             println("dump_dmar [pa] - Displays status and configurations of a DMA remapping unit.");
-            println("dump_ept [verbosity] - Displays contents of the EPT translation for the current EPTP.");
+            println("dump_ept [verbosity] - Displays guest physical address translation managed through EPT.");
+            println("dump_hlat [verbosity] - Displays linear address translation managed through HLAT.");
             println("dump_io - Displays contents of the IO bitmaps.");
             println("dump_msr [verbosity] - Displays contents of the MSR bitmaps.");
             println("dump_vmcs - Displays contents of the current VMCS.");
@@ -461,6 +472,270 @@ function dumpEpt(verbosity = 0, pml4) {
     }
 }
 
+// Implements the !dump_hlat command.
+function dumpHlat(verbosity = 0, pml4) {
+    class Region {
+        constructor(la, gpa, flags, size) {
+            this.la = la;
+            this.gpa = gpa;  // `undefined` if unmapped.
+            this.flags = flags;
+            this.size = size;
+            this.identifyMapping = (la == gpa);
+        }
+
+        toString() {
+            // If this is identify mapping or unmapped, display so.
+            let translation = (this.identifyMapping) ?
+                "Identity".padEnd(12) :
+                (!this.flags.present()) ?
+                    "Unmapped".padEnd(12) :
+                    hex(this.gpa).padStart(12);
+
+            return hex(this.la).padStart(12) + " - " +
+                hex(this.la.add(this.size)).padStart(12) + " -> " +
+                translation + " " +
+                this.flags;
+        }
+    }
+
+    const SIZE_4KB = 0x1000;
+    const SIZE_2MB = 0x200000;
+    const SIZE_1GB = 0x40000000;
+    const SIZE_512GB = 0x8000000000;
+
+    if (pml4 === undefined) {
+        pml4 = getCurrentHlatPml4();
+    }
+
+    // If the HLAT prefix size is 1, HLAT is enabled for only linear addresses
+    // where the bit 63 of them is 1 (ake, kernel addresses). Windows only uses
+    // this setup, so we support only this too.
+    let hlat_prefix_size = readVmcs(0x00000006); // HLAT prefix size
+    if (hlat_prefix_size != 1) {
+        throw new Error("Unsupported HLAT prefix size: " + hlat_prefix_size);
+    }
+
+    // A set of empty tables to speed up parsing.
+    let emptyTableCache = new Set();
+
+    // Walk through all HLAT entries and accumulate them as regions. We start at
+    // 0xffff800000000000, the lowest canonical form address that HLAT page walk
+    // can happen when the HLAT prefix size is 1.
+    let regions = [];
+    let la = host.Int64(0xffff800000000000);
+    let indexFor = indexesFor(la);
+    for (let i4 = indexFor.Pml4; i4 < 512; i4++, la = la.add(SIZE_512GB)) {
+        let pml4e = pml4.entries[i4];
+        if (!pml4e.flags.present()) {
+            regions.push(new Region(la, undefined, new PsFlags(0), SIZE_512GB));
+            continue;
+        }
+
+        if (pml4e.flags.restart) {
+            continue;
+        }
+
+        let pdpt = pml4e.nextTable;
+        if (emptyTableCache.has(pdpt)) {
+            continue;
+        }
+
+        if (parsePdpt(indexFor, pdpt, la, regions, pml4e)) {
+            emptyTableCache.add(pdpt);
+        }
+    }
+
+    println("LA [begin, end)                             GPA         Flags");
+    if (verbosity > 1) {
+        // Dump all regions with valid translations.
+        regions.map((region) => {
+            if (region.flags.present()) {
+                println(region);
+            }
+        });
+    } else {
+        // Combine regions that are effectively contiguous.
+        let combined_region = null;
+        for (let region of regions) {
+            if (combined_region === null) {
+                combined_region = region;
+                continue;
+            }
+
+            // Is this region contiguous to the current region? That is, ...
+            if (combined_region.flags.toString() == region.flags.toString() &&
+                combined_region.la.add(combined_region.size) == region.la &&
+                ((!combined_region.flags.present() && !region.flags.present()) ||
+                    (combined_region.flags.present() && region.flags.present() &&
+                        combined_region.gpa.add(combined_region.size) == region.gpa))) {
+                // It is contiguous. Just expand the size.
+                combined_region.size += region.size;
+            } else {
+                // It is not contiguous. Display the current region if it is valid,
+                // or in a verbose mode.
+                if (combined_region.flags.present() || verbosity > 0) {
+                    println(combined_region);
+                }
+
+                // If not, see if there is a restarted regions before this region.
+                if (verbosity > 0 &&
+                    combined_region.la.add(combined_region.size) != region.la) {
+                    //  Yes, there is. Display that.
+                    let missing_region_base = combined_region.la.add(combined_region.size);
+                    let missing_region_size = region.la.subtract(missing_region_base);
+                    println(hex(missing_region_base).padStart(12) + " - " +
+                        hex(missing_region_base.add(missing_region_size)).padStart(12) + " -> " +
+                        "Restart".padEnd(12) + " " +
+                        new PsFlags(0));
+                }
+
+                // Move on, and start checking contiguous regions from this region.
+                combined_region = region;
+            }
+        }
+
+        // Display the last one.
+        if (combined_region.flags.present() || verbosity > 0) {
+            println(combined_region);
+        }
+    }
+
+    /// Parses HLAT PDPT and accumulates region information into `regions`.
+    /// Returns true if no entry with a valid translation exists in the table.
+    /// "Valid" in this context excludes pages that are marked as "restart" and
+    /// "not-present".
+    function parsePdpt(indexFor, pdpt, la, regions, pml4e) {
+        let empty = true;
+        for (let i3 = indexFor.Pdpt; i3 < 512; i3++, la = la.add(SIZE_1GB)) {
+            let pdpte = pdpt.entries[i3];
+            if (!pdpte.flags.present()) {
+                regions.push(new Region(la, undefined, new PsFlags(0), SIZE_1GB));
+                continue;
+            }
+            if (pdpte.flags.restart) {
+                continue;
+            }
+            if (pdpte.flags.large) {
+                let flags = getEffectiveFlags(pml4e, pdpte);
+                regions.push(new Region(la, pdpte.pfn.bitwiseShiftLeft(12), flags, SIZE_1GB));
+                empty = false;
+                continue;
+            }
+            let pd = pdpte.nextTable;
+            if (emptyTableCache.has(pd)) {
+                continue;
+            }
+
+            if (parsePd(indexFor, pd, la, regions, pml4e, pdpte)) {
+                emptyTableCache.add(pd);
+            } else {
+                empty = false;
+            }
+        }
+        return empty;
+    }
+
+    /// Parses HLAT PD. See parsePdpt for more details.
+    function parsePd(indexFor, pd, la, regions, pml4e, pdpte) {
+        let empty = true;
+        for (let i2 = indexFor.Pd; i2 < 512; i2++, la = la.add(SIZE_2MB)) {
+            let pde = pd.entries[i2];
+            if (!pde.flags.present()) {
+                regions.push(new Region(la, undefined, new PsFlags(0), SIZE_2MB));
+                continue;
+            }
+            if (pde.flags.restart) {
+                continue;
+            }
+            if (pde.flags.large) {
+                let flags = getEffectiveFlags(pml4e, pdpte, pde);
+                regions.push(new Region(la, pde.pfn.bitwiseShiftLeft(12), flags, SIZE_2MB));
+                empty = false;
+                continue;
+            }
+            let pt = pde.nextTable;
+            if (emptyTableCache.has(pt)) {
+                continue;
+            }
+
+            if (parsePt(indexFor, pt, la, regions, pml4e, pdpte, pde)) {
+                emptyTableCache.add(pt);
+            } else {
+                empty = false;
+            }
+        }
+        return empty;
+    }
+
+    /// Parses HLAT PT. See parsePdpt for more details.
+    function parsePt(indexFor, pt, la, regions, pml4e, pdpte, pde) {
+        let empty = true;
+        for (let i1 = indexFor.Pt; i1 < 512; i1++, la = la.add(SIZE_4KB)) {
+            let pte = pt.entries[i1];
+            if (!pte.flags.present()) {
+                regions.push(new Region(la, undefined, new PsFlags(0), SIZE_4KB));
+                continue;
+            }
+            if (pte.flags.restart) {
+                continue;
+            }
+
+            let flags = getEffectiveFlags(pml4e, pdpte, pde, pte);
+            regions.push(new Region(la, pte.pfn.bitwiseShiftLeft(12), flags, SIZE_4KB));
+            empty = false;
+        }
+        return empty;
+    }
+
+    // Computes the effective flag value from the given PS entries. The accessed,
+    // dirty, large, restart bits are always reported as 0.
+    function getEffectiveFlags(pml4e, pdpte, pde, pte) {
+        let flags = new PsFlags(0);
+        flags.valid = pml4e.flags.valid & pdpte.flags.valid;
+        flags.write = pml4e.flags.write & pdpte.flags.write;
+        flags.user = pml4e.flags.user & pdpte.flags.user;
+        flags.nonExecute = pml4e.flags.nonExecute | pdpte.flags.nonExecute;
+
+        let leaf = pdpte;
+        if (pde) {
+            leaf = pde;
+            flags.valid &= pde.flags.valid;
+            flags.write &= pde.flags.write;
+            flags.user &= pde.flags.user;
+            flags.nonExecute |= pde.flags.nonExecute;
+        }
+        if (pte) {
+            leaf = pte;
+            flags.valid &= pte.flags.valid;
+            flags.write &= pte.flags.write;
+            flags.user &= pte.flags.user;
+            flags.nonExecute |= pte.flags.nonExecute;
+        }
+        return flags;
+    }
+}
+
+// Returns fully-parsed HLAT entries pointed by the current HLATP VMCS encoding.
+function getCurrentHlatPml4() {
+    let exec_control1 = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(exec_control1, 17, 1) == 0) {
+        throw new Error("HLAT is not enabled");
+    }
+
+    let exec_control3 = readVmcs(0x00002034);    // Tertiary processor-based VM-execution controls
+    if (bits(exec_control3, 1, 1) == 0) {
+        throw new Error("HLAT is not enabled");
+    }
+
+    let hlatp = readVmcs(0x00002040);  // Hypervisor-managed linear-address translation pointer
+    if (hlatp === undefined) {
+        throw new Error("The VMREAD instruction failed");
+    }
+
+    println("Current HLAT pointer " + hex(hlatp));
+    return new HlatPml4(hlatp.bitwiseAnd(~0xfff));
+}
+
 // Implements the !dump_io command.
 function dumpIo() {
     class IoAccessibilityRange {
@@ -791,7 +1066,7 @@ function getCurrentEptPml4() {
 function getEptPml4(pml4Addr) {
     // Cache fully parsed EPT if it is new, and return it.
     if (!g_eptCache[pml4Addr]) {
-    g_eptCache[pml4Addr] = new EptPml4(pml4Addr);
+        g_eptCache[pml4Addr] = new EptPml4(pml4Addr);
     }
     return g_eptCache[pml4Addr];
 }
@@ -843,84 +1118,28 @@ function readVmcsUnsafe(encoding) {
 class EptPml4 {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsEptEntries(address, EptPdpt);
+        this.entries = readPageAsTable(address, EptEntry, EptPdpt);
     }
 }
 
 class EptPdpt {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsEptEntries(address, EptPd);
+        this.entries = readPageAsTable(address, EptEntry, EptPd);
     }
 }
 
 class EptPd {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsEptEntries(address, EptPt);
+        this.entries = readPageAsTable(address, EptEntry, EptPt);
     }
 }
 
 class EptPt {
     constructor(address) {
         this.address = address;
-        this.entries = readPageAsEptEntries(address);
-    }
-}
-
-// Reads a physical address for 4KB and constructs a table with 512 EPT entries.
-function readPageAsEptEntries(address, nextTableType) {
-    let entries = [];
-    parseEach16Bytes(address.bitwiseAnd(~0xfff), 0x100, (l, h) =>
-        entries.push(new EptEntry(l, nextTableType), new EptEntry(h, nextTableType)));
-    return entries;
-}
-
-// Represents a single paging structure entry for any level of the tables.
-class PsEntry {
-    constructor(entry) {
-        this.value = entry;
-        this.flags = new PsFlags(entry);
-        this.pfn = bits(entry, 12, 40);
-    }
-
-    toString() {
-        return hex(this.pfn) + " " + this.flags;
-    }
-}
-
-// Partial representation of flags bits in any paging structure entries. Only
-// bits we care are represented.
-// See: Figure 4-11. Formats of CR3 and Paging-Structure Entries with 4-Level Paging and 5-Level Paging
-class PsFlags {
-    constructor(entry) {
-        this.valid = bits(entry, 0, 1);
-        this.write = bits(entry, 1, 1);
-        this.user = bits(entry, 2, 1);
-        this.accessed = bits(entry, 5, 1);
-        this.dirty = bits(entry, 6, 1);
-        this.large = bits(entry, 7, 1);
-        this.nonExecute = bits(entry, 63, 1);
-    }
-
-    toString() {
-        if (!this.valid) {
-            return "---------";
-        }
-        return (
-            { 1: "L", 0: "-" }[this.large] +
-            { 1: "D", 0: "-" }[this.dirty] +
-            { 1: "A", 0: "-" }[this.accessed] +
-            "--" +
-            { 1: "U", 0: "K" }[this.user] +
-            { 1: "W", 0: "R" }[this.write] +
-            { 1: "-", 0: "E" }[this.nonExecute] +
-            { 1: "V", 0: "-" }[this.valid]
-        );
-    }
-
-    present() {
-        return this.valid;
+        this.entries = readPageAsTable(address, EptEntry);
     }
 }
 
@@ -976,6 +1195,116 @@ class EptFlags {
     present() {
         return (this.read || this.write || this.execute);
     }
+}
+
+class HlatPml4 {
+    constructor(address) {
+        this.address = address;
+        this.entries = readPageAsTable(address, HlatEntry, HlatPdpt);
+    }
+}
+
+class HlatPdpt {
+    constructor(address) {
+        this.address = address;
+        if (!g_hlatCache[address]) {
+            g_hlatCache[address] = readPageAsTable(address, HlatEntry, HlatPd);
+        }
+        this.entries = g_hlatCache[address];
+    }
+}
+
+class HlatPd {
+    constructor(address) {
+        this.address = address;
+        if (!g_hlatCache[address]) {
+            g_hlatCache[address] = readPageAsTable(address, HlatEntry, HlatPt);
+        }
+        this.entries = g_hlatCache[address];
+    }
+}
+
+class HlatPt {
+    constructor(address) {
+        this.address = address;
+        if (!g_hlatCache[address]) {
+            g_hlatCache[address] = readPageAsTable(address, HlatEntry);
+        }
+        this.entries = g_hlatCache[address];
+    }
+}
+
+// Represents a single paging structure entry for any level of the tables.
+class HlatEntry {
+    constructor(entry, nextTableType) {
+        this.value = entry;
+        this.flags = new PsFlags(entry);
+        this.pfn = bits(entry, 12, 40);
+        if (this.flags.present() && !this.flags.large && !this.flags.restart && nextTableType !== undefined) {
+            this.nextTable = new nextTableType(this.pfn.bitwiseShiftLeft(12));
+        }
+    }
+
+    toString() {
+        return hex(this.pfn) + " " + this.flags;
+    }
+}
+
+// Represents a single paging structure entry for any level of the tables.
+class PsEntry {
+    constructor(entry) {
+        this.value = entry;
+        this.flags = new PsFlags(entry);
+        this.pfn = bits(entry, 12, 40);
+    }
+
+    toString() {
+        return hex(this.pfn) + " " + this.flags;
+    }
+}
+
+// Partial representation of flags bits in any paging structure entries. Only
+// bits we care are represented.
+// See: Figure 4-11. Formats of CR3 and Paging-Structure Entries with 4-Level Paging and 5-Level Paging
+class PsFlags {
+    constructor(entry) {
+        this.valid = bits(entry, 0, 1);
+        this.write = bits(entry, 1, 1);
+        this.user = bits(entry, 2, 1);
+        this.accessed = bits(entry, 5, 1);
+        this.dirty = bits(entry, 6, 1);
+        this.large = bits(entry, 7, 1);
+        this.restart = bits(entry, 11, 1);
+        this.nonExecute = bits(entry, 63, 1);
+    }
+
+    toString() {
+        if (!this.valid) {
+            return "---------";
+        }
+        return (
+            { 1: "L", 0: "-" }[this.large] +
+            { 1: "D", 0: "-" }[this.dirty] +
+            { 1: "A", 0: "-" }[this.accessed] +
+            "--" +
+            { 1: "U", 0: "K" }[this.user] +
+            { 1: "W", 0: "R" }[this.write] +
+            { 1: "-", 0: "E" }[this.nonExecute] +
+            { 1: "V", 0: "-" }[this.valid]
+        );
+    }
+
+    present() {
+        return this.valid;
+    }
+}
+
+// Reads a physical address for 4KB and constructs a table with 512 entries.
+function readPageAsTable(address, entryType, nextTableType) {
+    let entries = [];
+    parseEach16Bytes(address.bitwiseAnd(~0xfff), 0x100, (l, h) =>
+        entries.push(new entryType(l, nextTableType), new entryType(h, nextTableType)));
+    return entries;
 }
 
 // Takes specified range of bits from the 64bit value.
