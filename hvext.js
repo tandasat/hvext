@@ -1332,7 +1332,7 @@ const println = msg => print(msg + "\n");
 const hex = (num, padding = 0) => "0x" + num.toString(16).padStart(padding, "0");
 const exec = cmd => host.namespace.Debugger.Utility.Control.ExecuteCommand(cmd);
 
-// The list of VMCS encodings as of the revision 85, October 2024.
+// The list of VMCS encodings as of the revision 86, December 2024.
 const VMCS_ENCODINGS = [
     "Virtual-processor identifier (VPID)", 0x00000000,
     "Posted-interrupt notification vector", 0x00000002,
