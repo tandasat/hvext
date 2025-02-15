@@ -18,18 +18,18 @@ function initializeScript() {
 }
 
 // Cache of fully-parsed EPT, keyed by EPTP.
-let g_eptCache = {};
+let gEptCache = {};
 
 // Cache of unparsed HLAT tables, keyed by an address of the tables.
-let g_hlatCache = {};
+let gHlatCache = {};
 
 // The virtual address of (the first) "VMREAD RAX, RAX" in the HV image range.
-let g_vmreadAddress = null;
+let gVmreadAddress = null;
 
 // Initializes the extension.
 function invokeScript() {
     exec(".load kext");
-    g_vmreadAddress = findFirstVmreadRaxRax();
+    gVmreadAddress = findFirstVmreadRaxRax();
     println("hvext loaded. Execute !hvext_help [command] for help.");
 
     // Returns the first virtual address with "VMREAD RAX, RAX" in the HV address range.
@@ -333,7 +333,7 @@ function dumpEpt(verbosity = 0, pml4) {
 
     // Walk through all EPT entries and accumulate them as regions.
     let regions = [];
-    for (let gpa = 0, page_size = 0; ; gpa += page_size) {
+    for (let gpa = 0, pageSize = 0; ; gpa += pageSize) {
         let indexFor = indexesFor(gpa);
         let i1 = indexFor.Pt;
         let i2 = indexFor.Pd;
@@ -346,14 +346,14 @@ function dumpEpt(verbosity = 0, pml4) {
         }
 
         // Pick and check PML4e.
-        page_size = SIZE_512GB;
+        pageSize = SIZE_512GB;
         let pml4e = pml4.entries[i4];
         if (!pml4e.flags.present()) {
             continue;
         }
 
         // Pick and check PDPTe.
-        page_size = SIZE_1GB;
+        pageSize = SIZE_1GB;
         let pdpt = pml4e.nextTable;
         let pdpte = pdpt.entries[i3];
         if (!pdpte.flags.present()) {
@@ -362,12 +362,12 @@ function dumpEpt(verbosity = 0, pml4) {
 
         if (pdpte.flags.large) {
             let flags = getEffectiveFlags(pml4e, pdpte);
-            regions.push(new Region(gpa, pdpte.pfn.bitwiseShiftLeft(12), flags, page_size));
+            regions.push(new Region(gpa, pdpte.pfn.bitwiseShiftLeft(12), flags, pageSize));
             continue;
         }
 
         // Pick and check PDe.
-        page_size = SIZE_2MB;
+        pageSize = SIZE_2MB;
         let pd = pdpte.nextTable;
         let pde = pd.entries[i2];
         if (!pde.flags.present()) {
@@ -376,12 +376,12 @@ function dumpEpt(verbosity = 0, pml4) {
 
         if (pde.flags.large) {
             let flags = getEffectiveFlags(pml4e, pdpte, pde);
-            regions.push(new Region(gpa, pde.pfn.bitwiseShiftLeft(12), flags, page_size));
+            regions.push(new Region(gpa, pde.pfn.bitwiseShiftLeft(12), flags, pageSize));
             continue;
         }
 
         // Pick and check PTe.
-        page_size = SIZE_4KB;
+        pageSize = SIZE_4KB;
         let pt = pde.nextTable;
         let pte = pt.entries[i1];
         if (!pte.flags.present()) {
@@ -389,7 +389,7 @@ function dumpEpt(verbosity = 0, pml4) {
         }
 
         let flags = getEffectiveFlags(pml4e, pdpte, pde, pte);
-        regions.push(new Region(gpa, pte.pfn.bitwiseShiftLeft(12), flags, page_size));
+        regions.push(new Region(gpa, pte.pfn.bitwiseShiftLeft(12), flags, pageSize));
     }
 
     // Display gathered regions.
@@ -399,45 +399,45 @@ function dumpEpt(verbosity = 0, pml4) {
         regions.map(println);
     } else {
         // Combine regions that are effectively contiguous.
-        let combined_region = null;
+        let combinedRegion = null;
         for (let region of regions) {
-            if (combined_region === null) {
-                combined_region = region;
+            if (combinedRegion === null) {
+                combinedRegion = region;
                 continue;
             }
 
             // Is this region contiguous to the current region? That is, both
             // identity mapped, have the same flags and corresponding GPAs are
             // contiguous.
-            if (combined_region.identityMapping &&
+            if (combinedRegion.identityMapping &&
                 region.identityMapping &&
-                combined_region.flags.toString() == region.flags.toString() &&
-                combined_region.gpa + combined_region.size == region.gpa) {
+                combinedRegion.flags.toString() == region.flags.toString() &&
+                combinedRegion.gpa + combinedRegion.size == region.gpa) {
                 // It is contiguous. Just expand the size.
-                combined_region.size += region.size;
+                combinedRegion.size += region.size;
             } else {
                 // It is not contiguous. Display the current region.
-                println(combined_region);
+                println(combinedRegion);
 
                 // See if there is an unmapped regions before this region.
                 if (verbosity > 0 &&
-                    combined_region.gpa + combined_region.size != region.gpa) {
+                    combinedRegion.gpa + combinedRegion.size != region.gpa) {
                     //  Yes, there is. Display that.
-                    let unmapped_base = combined_region.gpa + combined_region.size;
-                    let unmapped_size = region.gpa - unmapped_base;
-                    println(hex(unmapped_base).padStart(12) + " - " +
-                        hex(unmapped_base + unmapped_size).padStart(12) + " -> " +
+                    let unmappedBase = combinedRegion.gpa + combinedRegion.size;
+                    let unmappedSize = region.gpa - unmappedBase;
+                    println(hex(unmappedBase).padStart(12) + " - " +
+                        hex(unmappedBase + unmappedSize).padStart(12) + " -> " +
                         "Unmapped".padEnd(12) + " " +
                         new EptFlags(0));
                 }
 
                 // Move on, and start checking contiguous regions from this region.
-                combined_region = region;
+                combinedRegion = region;
             }
         }
 
         // Display the last one.
-        println(combined_region);
+        println(combinedRegion);
     }
 
     // Computes the effective flag value from the given EPT entries. The large bit
@@ -510,9 +510,9 @@ function dumpHlat(verbosity = 0, pml4) {
     // If the HLAT prefix size is 1, HLAT is enabled for only linear addresses
     // where the bit 63 of them is 1 (aka, kernel addresses). Windows only uses
     // this setup, so we support only this too.
-    let hlat_prefix_size = readVmcs(0x00000006); // HLAT prefix size
-    if (hlat_prefix_size != 1) {
-        throw new Error("Unsupported HLAT prefix size: " + hlat_prefix_size);
+    let hlatPrefixSize = readVmcs(0x00000006); // HLAT prefix size
+    if (hlatPrefixSize != 1) {
+        throw new Error("Unsupported HLAT prefix size: " + hlatPrefixSize);
     }
 
     // A set of empty tables to speed up parsing.
@@ -555,48 +555,48 @@ function dumpHlat(verbosity = 0, pml4) {
         });
     } else {
         // Combine regions that are effectively contiguous.
-        let combined_region = null;
+        let combinedRegion = null;
         for (let region of regions) {
-            if (combined_region === null) {
-                combined_region = region;
+            if (combinedRegion === null) {
+                combinedRegion = region;
                 continue;
             }
 
             // Is this region contiguous to the current region? That is, ...
-            if (combined_region.flags.toString() == region.flags.toString() &&
-                combined_region.la.add(combined_region.size) == region.la &&
-                ((!combined_region.flags.present() && !region.flags.present()) ||
-                    (combined_region.flags.present() && region.flags.present() &&
-                        combined_region.gpa.add(combined_region.size) == region.gpa))) {
+            if (combinedRegion.flags.toString() == region.flags.toString() &&
+                combinedRegion.la.add(combinedRegion.size) == region.la &&
+                ((!combinedRegion.flags.present() && !region.flags.present()) ||
+                    (combinedRegion.flags.present() && region.flags.present() &&
+                        combinedRegion.gpa.add(combinedRegion.size) == region.gpa))) {
                 // It is contiguous. Just expand the size.
-                combined_region.size += region.size;
+                combinedRegion.size += region.size;
             } else {
                 // It is not contiguous. Display the current region if it is valid,
                 // or in a verbose mode.
-                if (combined_region.flags.present() || verbosity > 0) {
-                    println(combined_region);
+                if (combinedRegion.flags.present() || verbosity > 0) {
+                    println(combinedRegion);
                 }
 
                 // If not, see if there is a restarted regions before this region.
                 if (verbosity > 0 &&
-                    combined_region.la.add(combined_region.size) != region.la) {
+                    combinedRegion.la.add(combinedRegion.size) != region.la) {
                     //  Yes, there is. Display that.
-                    let missing_region_base = combined_region.la.add(combined_region.size);
-                    let missing_region_size = region.la.subtract(missing_region_base);
-                    println(hex(missing_region_base).padStart(12) + " - " +
-                        hex(missing_region_base.add(missing_region_size)).padStart(12) + " -> " +
+                    let missingRegionBase = combinedRegion.la.add(combinedRegion.size);
+                    let missingRegionSize = region.la.subtract(missingRegionBase);
+                    println(hex(missingRegionBase).padStart(12) + " - " +
+                        hex(missingRegionBase.add(missingRegionSize)).padStart(12) + " -> " +
                         "Restart".padEnd(12) + " " +
                         new PsFlags(0));
                 }
 
                 // Move on, and start checking contiguous regions from this region.
-                combined_region = region;
+                combinedRegion = region;
             }
         }
 
         // Display the last one.
-        if (combined_region.flags.present() || verbosity > 0) {
-            println(combined_region);
+        if (combinedRegion.flags.present() || verbosity > 0) {
+            println(combinedRegion);
         }
     }
 
@@ -717,13 +717,13 @@ function dumpHlat(verbosity = 0, pml4) {
 
 // Returns fully-parsed HLAT entries pointed by the current HLATP VMCS encoding.
 function getCurrentHlatPml4() {
-    let exec_control1 = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
-    if (bits(exec_control1, 17, 1) == 0) {
+    let execControl1 = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(execControl1, 17, 1) == 0) {
         throw new Error("HLAT is not enabled");
     }
 
-    let exec_control3 = readVmcs(0x00002034);    // Tertiary processor-based VM-execution controls
-    if (bits(exec_control3, 1, 1) == 0) {
+    let execControl3 = readVmcs(0x00002034);    // Tertiary processor-based VM-execution controls
+    if (bits(execControl3, 1, 1) == 0) {
         throw new Error("HLAT is not enabled");
     }
 
@@ -751,10 +751,10 @@ function dumpIo() {
         }
     }
 
-    let exec_control = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
-    if (bits(exec_control, 25, 1) == 0) {
+    let execControl = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(execControl, 25, 1) == 0) {
         // Check "unconditional I/O exiting"
-        if (bits(exec_control, 24, 1) == 0) {
+        if (bits(execControl, 24, 1) == 0) {
             println("IO bitmaps are not used. IO port access does not cause VM-exit.");
         } else {
             println("IO port access unconditionally causes VM-exit.");
@@ -762,20 +762,20 @@ function dumpIo() {
         return;
     }
 
-    let bitmap_low = readVmcs(0x00002000);  // I/O bitmap A
-    let bitmap_high = readVmcs(0x00002002);  // I/O bitmap B
+    let bitmapLow = readVmcs(0x00002000);  // I/O bitmap A
+    let bitmapHigh = readVmcs(0x00002002);  // I/O bitmap B
 
     // Convert the 4KB contents into an array of 64bit integers for processing.
     let entries = [];
-    parseEach16Bytes(bitmap_low, 0x100, (l, h) => entries.push(l, h));
-    parseEach16Bytes(bitmap_high, 0x100, (l, h) => entries.push(l, h));
+    parseEach16Bytes(bitmapLow, 0x100, (l, h) => entries.push(l, h));
+    parseEach16Bytes(bitmapHigh, 0x100, (l, h) => entries.push(l, h));
 
     let ranges = [];
     let range = undefined;
     let port = 0;
     for (let entry of entries) {
-        for (let bit_position = 0; bit_position < 64; bit_position++, port++) {
-            let intercepted = bits(entry, bit_position, 1);
+        for (let bitPosition = 0; bitPosition < 64; bitPosition++, port++) {
+            let intercepted = bits(entry, bitPosition, 1);
             if (port == 0) {
                 range = new IoAccessibilityRange(port, port, intercepted);
             } else if (range.intercepted == intercepted) {
@@ -795,28 +795,28 @@ function dumpIo() {
 // Implements the !dump_msr command.
 function dumpMsr(verbosity = 0) {
     class MsrEntry {
-        constructor(bit_position, read_protected, write_protected) {
-            if (bit_position < 0x2000) {
-                this.msr = bit_position;
+        constructor(bitPosition, readProtected, writeProtected) {
+            if (bitPosition < 0x2000) {
+                this.msr = bitPosition;
             } else {
-                this.msr = bit_position - 0x2000 + 0xc0000000;
+                this.msr = bitPosition - 0x2000 + 0xc0000000;
             }
-            this.read_protected = read_protected;
-            this.write_protected = write_protected;
+            this.readProtected = readProtected;
+            this.writeProtected = writeProtected;
         }
 
         toString() {
             return (
-                { 1: "-", 0: "R" }[this.read_protected] +
-                { 1: "-", 0: "W" }[this.write_protected] +
+                { 1: "-", 0: "R" }[this.readProtected] +
+                { 1: "-", 0: "W" }[this.writeProtected] +
                 " " +
                 hex(this.msr)
             );
         }
     }
 
-    let exec_control = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
-    if (bits(exec_control, 28, 1) == 0) {
+    let execControl = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(execControl, 28, 1) == 0) {
         println("MSR bitmaps are not used. MSR access unconditionally causes VM-exit.");
         return;
     }
@@ -833,20 +833,20 @@ function dumpMsr(verbosity = 0) {
     // (= 0x100 * 8) to look both segments in a single loop.
     let msrs = [];
     for (let i = 0; i < 0x100; i++) {
-        let entry_low = entries[i];
-        let entry_hi = entries[i + 0x100];
+        let entryLow = entries[i];
+        let entryHi = entries[i + 0x100];
         // For the selected upper and lower 64bit entries, walk though each bit
         // position and construct `MsrEntry` from the pair of the bits.
-        for (let bit_position = 0; bit_position < 64; bit_position++) {
-            let read_protected = bits(entry_low, bit_position, 1);
-            let write_protected = bits(entry_hi, bit_position, 1);
-            msrs.push(new MsrEntry(i * 64 + bit_position, read_protected, write_protected));
+        for (let bitPosition = 0; bitPosition < 64; bitPosition++) {
+            let readProtected = bits(entryLow, bitPosition, 1);
+            let writeProtected = bits(entryHi, bitPosition, 1);
+            msrs.push(new MsrEntry(i * 64 + bitPosition, readProtected, writeProtected));
         }
     }
 
     for (let msr of msrs) {
         if (verbosity == 0) {
-            if (!msr.read_protected || !msr.write_protected) {
+            if (!msr.readProtected || !msr.writeProtected) {
                 println(msr);
             }
         } else {
@@ -1043,13 +1043,13 @@ function pte(la, pml4) {
 
 // Returns fully-parsed EPT entries pointed by the current EPTP VMCS encoding.
 function getCurrentEptPml4() {
-    let exec_control1 = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
-    if (bits(exec_control1, 31, 1) == 0) {
+    let execControl1 = readVmcs(0x00004002);    // Primary processor-based VM-execution controls
+    if (bits(execControl1, 31, 1) == 0) {
         throw new Error("EPT is not enabled");
     }
 
-    let exec_control2 = readVmcs(0x0000401E);    // Secondary processor-based VM-execution controls
-    if (bits(exec_control2, 1, 1) == 0) {
+    let execControl2 = readVmcs(0x0000401E);    // Secondary processor-based VM-execution controls
+    if (bits(execControl2, 1, 1) == 0) {
         throw new Error("EPT is not enabled");
     }
 
@@ -1065,10 +1065,10 @@ function getCurrentEptPml4() {
 // Returns fully-parsed EPT entries rooted from the specified address.
 function getEptPml4(pml4Addr) {
     // Cache fully parsed EPT if it is new, and return it.
-    if (!g_eptCache[pml4Addr]) {
-        g_eptCache[pml4Addr] = new EptPml4(pml4Addr);
+    if (!gEptCache[pml4Addr]) {
+        gEptCache[pml4Addr] = new EptPml4(pml4Addr);
     }
-    return g_eptCache[pml4Addr];
+    return gEptCache[pml4Addr];
 }
 
 // Reads a VMCS encoding. Returns 'undefined' if read fails.
@@ -1094,7 +1094,7 @@ function readVmcs(encoding) {
 function readVmcsUnsafe(encoding) {
     // Jump (back) to "VMREAD RAX, RAX", update RAX with encoding to read,
     // and execute the instruction.
-    exec("r rip=" + hex(g_vmreadAddress) + ", rax=" + hex(encoding));
+    exec("r rip=" + hex(gVmreadAddress) + ", rax=" + hex(encoding));
     if (exec("p").Last().includes("second chance")) {
         throw new Error("CPU exception occurred with the VMREAD instruction." +
             " Reboot the system with the .reboot command. This can happen" +
@@ -1207,30 +1207,30 @@ class HlatPml4 {
 class HlatPdpt {
     constructor(address) {
         this.address = address;
-        if (!g_hlatCache[address]) {
-            g_hlatCache[address] = readPageAsTable(address, HlatEntry, HlatPd);
+        if (!gHlatCache[address]) {
+            gHlatCache[address] = readPageAsTable(address, HlatEntry, HlatPd);
         }
-        this.entries = g_hlatCache[address];
+        this.entries = gHlatCache[address];
     }
 }
 
 class HlatPd {
     constructor(address) {
         this.address = address;
-        if (!g_hlatCache[address]) {
-            g_hlatCache[address] = readPageAsTable(address, HlatEntry, HlatPt);
+        if (!gHlatCache[address]) {
+            gHlatCache[address] = readPageAsTable(address, HlatEntry, HlatPt);
         }
-        this.entries = g_hlatCache[address];
+        this.entries = gHlatCache[address];
     }
 }
 
 class HlatPt {
     constructor(address) {
         this.address = address;
-        if (!g_hlatCache[address]) {
-            g_hlatCache[address] = readPageAsTable(address, HlatEntry);
+        if (!gHlatCache[address]) {
+            gHlatCache[address] = readPageAsTable(address, HlatEntry);
         }
-        this.entries = g_hlatCache[address];
+        this.entries = gHlatCache[address];
     }
 }
 
