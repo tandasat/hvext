@@ -306,12 +306,12 @@ function dumpEpt(verbosity = 0, pml4) {
             this.pa = pa;
             this.flags = flags;
             this.size = size;
-            this.identifyMapping = (gpa == pa);
+            this.identityMapping = (gpa == pa);
         }
 
         toString() {
-            // If this is identify mapping, display so instead of actual PA.
-            let translation = (this.identifyMapping) ?
+            // If this is identity mapping, display so instead of actual PA.
+            let translation = (this.identityMapping) ?
                 "Identity".padEnd(12) :
                 hex(this.pa).padStart(12);
 
@@ -407,10 +407,10 @@ function dumpEpt(verbosity = 0, pml4) {
             }
 
             // Is this region contiguous to the current region? That is, both
-            // identify mapped, have the same flags and corresponding GPAs are
+            // identity mapped, have the same flags and corresponding GPAs are
             // contiguous.
-            if (combined_region.identifyMapping &&
-                region.identifyMapping &&
+            if (combined_region.identityMapping &&
+                region.identityMapping &&
                 combined_region.flags.toString() == region.flags.toString() &&
                 combined_region.gpa + combined_region.size == region.gpa) {
                 // It is contiguous. Just expand the size.
@@ -480,12 +480,12 @@ function dumpHlat(verbosity = 0, pml4) {
             this.gpa = gpa;  // `undefined` if unmapped.
             this.flags = flags;
             this.size = size;
-            this.identifyMapping = (la == gpa);
+            this.identityMapping = (la == gpa);
         }
 
         toString() {
-            // If this is identify mapping or unmapped, display so.
-            let translation = (this.identifyMapping) ?
+            // If this is identity mapping or unmapped, display so.
+            let translation = (this.identityMapping) ?
                 "Identity".padEnd(12) :
                 (!this.flags.present()) ?
                     "Unmapped".padEnd(12) :
