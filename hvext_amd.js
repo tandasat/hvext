@@ -319,9 +319,23 @@ class Vmcb {
             println(`+${hex(offset, 3)}: ${field}`);
         }
         if (verbosity != 0) {
-            this.fields[0x040].iopm.dump(0);
-            this.fields[0x048].msrpm.dump(0);
-            this.fields[0x0b0].npt.dump(0);
+            if (bits(this.fields[0x00c].value, 27, 1)) {
+                this.fields[0x040].iopm.dump(0);
+            } else {
+                println("IO permissions map is not enabled. IO port access does not cause VM-exit.");
+            }
+
+            if (bits(this.fields[0x00c].value, 28, 1)) {
+                this.fields[0x048].msrpm.dump(0);
+            } else {
+                println("MSR permissions map is not enabled. MSR access does not cause VM-exit.");
+            }
+
+            if (bits(this.fields[0x090].value, 0, 1)) {
+                this.fields[0x0b0].npt.dump(0);
+            } else {
+                println("Nested paging is not enabled.");
+            }
         }
     }
 }
@@ -468,6 +482,7 @@ class Msrpm {
 
         assert(address == (address & ~0xfffn), "MSR permissions map must be at 4KB aligned address");
 
+        // Parse only up to 0x1800 because the rest are reserved.
         let msrs = [];
         let bytes = readPhysical(address, 0x2000);
         for (let i = 0; i < 0x1800; i++) {
@@ -557,9 +572,12 @@ class Iopm {
 
         assert(address == (address & ~0xfffn), "IO permissions map must be at 4KB aligned address");
 
+        // Parse only up to 0x2000 because the last 4KB of the IO permissions
+        // bitmap is used only for its first 3 bits, corresponding to IO at
+        // 0xffff with 32bit-width.
         let ports = [];
         let bytes = readPhysical(address, 0x3000);
-        for (let i = 0; i < bytes.length; i++) {
+        for (let i = 0; i < 0x2000; i++) {
             let byte = bytes[i];
             for (let bitPos = 0; bitPos < 8; bitPos++) {
                 let rwProtected = Boolean(bits(byte, bitPos, 1));
