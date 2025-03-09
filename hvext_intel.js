@@ -910,11 +910,14 @@ function eptPte(gpa, pml4) {
     let pdpt = pml4e.nextTable;
     let pdpte = pdpt.entries[i3];
     if (!pdpte.flags.present() || pdpte.flags.large) {
-        println("PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
+        println(
+            "PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
             "PDPTe at " + hex(pdpt.address.add(8 * i3)));
-        println("contains " + hex(pml4e.value).padEnd(18) +
+        println(
+            "contains " + hex(pml4e.value).padEnd(18) +
             "contains " + hex(pdpte.value));
-        println("pfn " + (pml4e + "").padEnd(23) +
+        println(
+            "pfn " + (pml4e + "").padEnd(23) +
             "pfn " + pdpte);
         return;
     }
@@ -923,13 +926,16 @@ function eptPte(gpa, pml4) {
     let pd = pdpte.nextTable;
     let pde = pd.entries[i2];
     if (!pde.flags.present() || pde.flags.large) {
-        println("PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
+        println(
+            "PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
             "PDPTe at " + hex(pdpt.address.add(8 * i3)).padEnd(18) +
             "PDe at " + hex(pd.address.add(8 * i2)));
-        println("contains " + hex(pml4e.value).padEnd(18) +
+        println(
+            "contains " + hex(pml4e.value).padEnd(18) +
             "contains " + hex(pdpte.value).padEnd(18) +
             "contains " + hex(pde.value));
-        println("pfn " + (pml4e + "").padEnd(23) +
+        println(
+            "pfn " + (pml4e + "").padEnd(23) +
             "pfn " + (pdpte + "").padEnd(23) +
             "pfn " + pde);
         return;
@@ -938,15 +944,18 @@ function eptPte(gpa, pml4) {
     // Pick PTe.
     let pt = pde.nextTable;
     let pte = pt.entries[i1];
-    println("PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
+    println(
+        "PML4e at " + hex(pml4.address.add(8 * i4)).padEnd(18) +
         "PDPTe at " + hex(pdpt.address.add(8 * i3)).padEnd(18) +
         "PDe at " + hex(pd.address.add(8 * i2)).padEnd(20) +
         "PTe at " + hex(pt.address.add(8 * i1)));
-    println("contains " + hex(pml4e.value).padEnd(18) +
+    println(
+        "contains " + hex(pml4e.value).padEnd(18) +
         "contains " + hex(pdpte.value).padEnd(18) +
         "contains " + hex(pde.value).padEnd(18) +
         "contains " + hex(pte.value));
-    println("pfn " + (pml4e + "").padEnd(23) +
+    println(
+        "pfn " + (pml4e + "").padEnd(23) +
         "pfn " + (pdpte + "").padEnd(23) +
         "pfn " + (pde + "").padEnd(23) +
         "pfn " + pte);
@@ -994,11 +1003,14 @@ function pte(la, pml4) {
     let pdpt = pml4e.pfn.bitwiseShiftLeft(12);
     let pdpte = new PsEntry(readEntry(pdpt + 8 * i3));
     if (!pdpte.flags.present() || pdpte.flags.large) {
-        println("PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
+        println(
+            "PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
             "PDPTe at " + hex(pdpt.add(8 * i3)));
-        println("contains " + hex(pml4e.value).padEnd(18) +
+        println(
+            "contains " + hex(pml4e.value).padEnd(18) +
             "contains " + hex(pdpte.value));
-        println("pfn " + (pml4e + "").padEnd(23) +
+        println(
+            "pfn " + (pml4e + "").padEnd(23) +
             "pfn " + pdpte);
         return;
     }
@@ -1007,13 +1019,16 @@ function pte(la, pml4) {
     let pd = pdpte.pfn.bitwiseShiftLeft(12);
     let pde = new PsEntry(readEntry(pd + 8 * i2));
     if (!pde.flags.present() || pde.flags.large) {
-        println("PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
+        println(
+            "PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
             "PDPTe at " + hex(pdpt.add(8 * i3)).padEnd(18) +
             "PDe at " + hex(pd.add(8 * i2)));
-        println("contains " + hex(pml4e.value).padEnd(18) +
+        println(
+            "contains " + hex(pml4e.value).padEnd(18) +
             "contains " + hex(pdpte.value).padEnd(18) +
             "contains " + hex(pde.value));
-        println("pfn " + (pml4e + "").padEnd(23) +
+        println(
+            "pfn " + (pml4e + "").padEnd(23) +
             "pfn " + (pdpte + "").padEnd(23) +
             "pfn " + pde);
         return;
@@ -1022,15 +1037,18 @@ function pte(la, pml4) {
     // Pick PTe.
     let pt = pde.pfn.bitwiseShiftLeft(12);
     let pte = new PsEntry(readEntry(pt + 8 * i1));
-    println("PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
+    println(
+        "PML4e at " + hex(pml4.add(8 * i4)).padEnd(18) +
         "PDPTe at " + hex(pdpt.add(8 * i3)).padEnd(18) +
         "PDe at " + hex(pd.add(8 * i2)).padEnd(20) +
         "PTe at " + hex(pt.add(8 * i1)));
-    println("contains " + hex(pml4e.value).padEnd(18) +
+    println(
+        "contains " + hex(pml4e.value).padEnd(18) +
         "contains " + hex(pdpte.value).padEnd(18) +
         "contains " + hex(pde.value).padEnd(18) +
         "contains " + hex(pte.value));
-    println("pfn " + (pml4e + "").padEnd(23) +
+    println(
+        "pfn " + (pml4e + "").padEnd(23) +
         "pfn " + (pdpte + "").padEnd(23) +
         "pfn " + (pde + "").padEnd(23) +
         "pfn " + pte);
