@@ -746,8 +746,10 @@ function dumpIo() {
         }
 
         toString() {
-            return (this.intercepted ? "-- " : "RW ") + hex(this.begin) +
-                (this.begin == this.end ? "" : " .. " + hex(this.end));
+            return (this.intercepted ? "-- " : "RW ") +
+                ((this.begin == this.end) ?
+                    ` ${hex(this.begin)}` :
+                    ` [${hex(this.begin)}, ${hex(this.end)}]`);
         }
     }
 
@@ -794,6 +796,21 @@ function dumpIo() {
 
 // Implements the !dump_msr command.
 function dumpMsr(verbosity = 0) {
+    class MsrAccessibilityRange {
+        constructor(begin, end) {
+            this.begin = begin;
+            this.end = end;
+        }
+
+        toString() {
+            return (this.begin.readProtected ? "-" : "R") +
+                (this.begin.writeProtected ? "-" : "W") +
+                ((this.begin == this.end) ?
+                    `  ${hex(this.begin.msr)}` :
+                    ` [${hex(this.begin.msr)}, ${hex(this.end.msr)}]`);
+        }
+    }
+
     class MsrEntry {
         constructor(bitPosition, readProtected, writeProtected) {
             if (bitPosition < 0x2000) {
@@ -844,14 +861,29 @@ function dumpMsr(verbosity = 0) {
         }
     }
 
+    let begin = undefined;
+    let end = undefined;
+    let ranges = [];
     for (let msr of msrs) {
-        if (verbosity == 0) {
-            if (!msr.readProtected || !msr.writeProtected) {
-                println(msr);
-            }
+        if (begin === undefined) {
+            begin = end = msr;
+        } else if (end.msr == msr.msr - 1 &&
+            end.readProtected == msr.readProtected &&
+            end.writeProtected == msr.writeProtected) {
+            // Contiguous MSR with the same permissions. Extend the range.
+            end = msr;
         } else {
-            println(msr);
+            // Non-contiguous MSR or different permissions. Save the range and start a new one.
+            ranges.push(new MsrAccessibilityRange(begin, end));
+            begin = end = msr;
         }
+    }
+    ranges.push(new MsrAccessibilityRange(begin, end));
+
+    if (verbosity == 0) {
+        ranges.filter(range => !range.begin.readProtected || !range.begin.writeProtected).map(println);
+    } else {
+        ranges.map(println);
     }
 }
 
