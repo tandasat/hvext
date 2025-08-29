@@ -1382,7 +1382,7 @@ const println = msg => print(msg + "\n");
 const hex = (num, padding = 0) => "0x" + num.toString(16).padStart(padding, "0");
 const exec = cmd => host.namespace.Debugger.Utility.Control.ExecuteCommand(cmd);
 
-// The list of VMCS encodings as of the revision 86, December 2024.
+// The list of VMCS encodings as of the revision 88, June 2025.
 const VMCS_ENCODINGS = [
     "Virtual-processor identifier (VPID)", 0x00000000,
     "Posted-interrupt notification vector", 0x00000002,
@@ -1434,7 +1434,6 @@ const VMCS_ENCODINGS = [
     "Sub-page-permission-table pointer", 0x00002030,
     "TSC multiplier", 0x00002032,
     "Tertiary processor-based VM-execution controls", 0x00002034,
-    "ENCLV-exiting bitmap", 0x00002036,
     "Low PASID directory address", 0x00002038,
     "High PASID directory address", 0x0000203A,
     "Shared EPT pointer", 0x0000203C,
