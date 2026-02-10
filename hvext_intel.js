@@ -29,26 +29,28 @@ let gVmreadAddress = null;
 // Initializes the extension.
 function invokeScript() {
     exec(".load kext");
-    gVmreadAddress = findFirstVmreadRaxRax();
+    gVmreadAddress = findVmreadRaxRax();
     println("hvext loaded. Execute !hvext_help [command] for help.");
 
-    // Returns the first virtual address with "VMREAD RAX, RAX" in the HV address range.
-    function findFirstVmreadRaxRax() {
+    // Returns the virtual address of first functional "VMREAD RAX, RAX" in the HV address range.
+    function findVmreadRaxRax() {
         const isVmreadRaxRax = (memory, i) => (
             memory[i] == 0x0f &&
             memory[i + 1] == 0x78 &&
             memory[i + 2] == 0xc0
         );
 
-        // Search each page in the HV image range. Returns the first hit.
+        // Search the HV image for the pattern.
         let hvImageRange = findHvImageRange();
         for (let i = hvImageRange.Start; i.compareTo(hvImageRange.End) == -1; i = i.add(0x1000)) {
             let found = searchMemory(i, 0x1000, isVmreadRaxRax);
-            if (found.length != 0) {
-                return found[0];
+            for (let addr of found) {
+                if (isValidVmread(addr)) {
+                    return addr;
+                }
             }
         }
-        throw new Error("No VMREAD RAX, RAX (0f 78 c0) found.");
+        throw new Error("No functional VMREAD RAX, RAX (0f 78 c0) found.");
 
         // Returns the range of the virtual address where the HV image is mapped.
         function findHvImageRange() {
@@ -79,6 +81,30 @@ function invokeScript() {
                 }
             }
             return index;
+        }
+
+        // Filters out VMREAD calls and non-executable matches that cause crashes.
+        function isValidVmread(address) {
+            // Capture current register state to restore later.
+            let state = exec("r efl, rax, rip").Last();
+            let origEfl = state.substring(4, 12);
+            let origRax = state.substring(17, 33);
+            let origRip = state.substring(38, 54);
+
+            let valid = false;
+            try {
+                exec("r rip=" + hex(address) + ", rax=0");
+                let output = exec("p").Last();
+                if (!output.includes("second chance") && !output.includes("Exception")) {
+                    valid = true;
+                }
+            } catch (e) {
+                // Ignore failures as we might always have invalid VMREAD calls.
+            }
+
+            // Restore original register state.
+            exec("r efl=" + origEfl + ", rax=" + origRax + ", rip=" + origRip);
+            return valid;
         }
     }
 }
